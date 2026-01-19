@@ -488,7 +488,7 @@ if "quick_message" in st.session_state:
         st.markdown(f'<div class="rtl-text">{quick_msg}</div>', unsafe_allow_html=True)
 
     with st.chat_message("assistant"):
-        with st.spinner("🤔 جاري التفكير... / Thinking..."):
+        with st.spinner("🤔 Thinking..."):
             # Pass chat history for context
             response, traces = send_message(
                 selected_employee_id,
@@ -509,7 +509,7 @@ if "quick_message" in st.session_state:
     st.rerun()
 
 # Chat input
-if prompt := st.chat_input("اكتب رسالتك هنا... / Type your message..."):
+if prompt := st.chat_input("Type your message..."):
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt, "traces": []})
 
@@ -521,7 +521,7 @@ if prompt := st.chat_input("اكتب رسالتك هنا... / Type your message.
 
     # Get and display assistant response
     with st.chat_message("assistant"):
-        with st.spinner("🤔 جاري التفكير... / Thinking..."):
+        with st.spinner("🤔 Thinking..."):
             # Pass chat history for context
             response, traces = send_message(
                 selected_employee_id,

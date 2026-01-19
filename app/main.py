@@ -19,6 +19,8 @@ from app.agent.hr_agent import get_hr_agent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
+    import asyncio
+    
     # Startup
     print("🚀 Starting Solvait AI Assistant...")
 
@@ -33,9 +35,20 @@ async def lifespan(app: FastAPI):
     policy_engine = get_policy_engine()
     print("✅ ChromaDB ready with policy documents")
 
-    yield
-    # Shutdown
-    print("👋 Shutting down...")
+    # Yield control to the application
+    try:
+        yield
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        # Normal shutdown - these errors are expected during Ctrl+C
+        pass
+    finally:
+        # Shutdown cleanup
+        try:
+            print("👋 Shutting down gracefully...")
+            # Add any cleanup logic here if needed (e.g., close database connections)
+        except Exception:
+            # Suppress any errors during shutdown
+            pass
 
 
 # ============================================
@@ -285,4 +298,14 @@ async def reset_database():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    import sys
+    import warnings
+    
+    # Suppress asyncio CancelledError warnings during shutdown
+    warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*CancelledError.*")
+    
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    except KeyboardInterrupt:
+        print("\n👋 Shutting down server gracefully...")
+        sys.exit(0)

@@ -92,14 +92,21 @@ class PolicyEngine:
 
             Use this tool to search and answer questions about HR policies,
             company rules, leave policies, salary structure, overtime rules,
-            health insurance coverage, attendance policies, and any other
-            information from the Employee Handbook.
+            health insurance coverage, attendance policies, system access,
+            portal usage, login procedures, how-to guides, and ANY other
+            information that might be documented in the Employee Handbook.
+
+            This tool searches comprehensive HR documentation including:
+            - All policy sections and procedures
+            - System access and portal instructions
+            - Step-by-step guides and how-to information
+            - Any documented HR-related information
 
             Args:
-                query: The question or search query about HR policies
+                query: The question or search query about HR policies, procedures, or systems
 
             Returns:
-                Answer based on the HR policy documents
+                Answer based on the HR policy documents, or indicates if information is not found
             """
             return self.query(query)
 
@@ -109,7 +116,9 @@ class PolicyEngine:
             description=(
                 "Search HR policies and Employee Handbook for answers about "
                 "leave policies, salary structure, overtime rules, health insurance, "
-                "attendance policies, and company rules. Always cite sections."
+                "attendance policies, company rules, system access, portal usage, "
+                "login procedures, how-to guides, and ANY information documented in the handbook. "
+                "Always cite sections. Use this tool FIRST before saying information is not available."
             )
         )
 

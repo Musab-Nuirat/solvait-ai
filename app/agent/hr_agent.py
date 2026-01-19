@@ -119,10 +119,30 @@ class HRAgent:
 
             # Inject employee context AND DATE into message to ensure agent uses correct ID and Date
             from datetime import date
+            
+            # Detect language of CURRENT message only
+            def detect_language(text: str) -> str:
+                """Detect if text is Arabic or English based on character set."""
+                arabic_chars = set('ابتثجحخدذرزسشصضطظعغفقكلمنهويءآأإؤئ')
+                has_arabic = any(char in arabic_chars for char in text)
+                # Count Arabic vs Latin characters
+                arabic_count = sum(1 for char in text if char in arabic_chars)
+                latin_count = sum(1 for char in text if char.isalpha() and ord(char) < 128)
+                
+                if arabic_count > 0 and arabic_count >= latin_count:
+                    return "Arabic"
+                elif latin_count > 0:
+                    return "English"
+                else:
+                    return "Arabic" if has_arabic else "English"
+            
+            detected_lang = detect_language(message)
             today_str = date.today().strftime("%Y-%m-%d")
             context_prefix = f"""[SYSTEM CONTEXT]
 - Current Date: {today_str} (Use this for 'today')
 - Current Employee: {self.employee_id}
+- Detected Language of CURRENT message: {detected_lang}
+- CRITICAL: You MUST reply in {detected_lang}. Ignore the language of previous messages in chat history.
 - Rule: Do NOT ask for the date.
 [END SYSTEM CONTEXT]
 
