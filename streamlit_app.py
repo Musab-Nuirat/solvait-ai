@@ -1,4 +1,4 @@
-"""Streamlit Chat UI for PeopleHub AI Assistant."""
+"""Streamlit Chat UI for Solvait AI Assistant."""
 
 import os
 import streamlit as st
@@ -14,7 +14,7 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # Page config
 st.set_page_config(
-    page_title="PeopleHub AI Assistant",
+    page_title="Solvait AI Assistant",
     page_icon="🧑‍💼",
     layout="centered",
     initial_sidebar_state="expanded"
@@ -277,22 +277,22 @@ with st.sidebar:
     # Quick actions
     st.markdown("### ⚡ Quick Actions")
 
-    if st.button("📊 Check Leave Balance", use_container_width=True):
+    if st.button("📊 Check Leave Balance", width=True):
         st.session_state.quick_message = "كم رصيد إجازاتي؟"
 
-    if st.button("💰 View Payslip", use_container_width=True):
+    if st.button("💰 View Payslip", width=True):
         st.session_state.quick_message = "أريد رؤية قسيمة راتبي"
 
-    if st.button("📋 Request Leave", use_container_width=True):
+    if st.button("📋 Request Leave", width=True):
         st.session_state.quick_message = "أريد طلب إجازة يوم الاثنين القادم"
 
-    if st.button("📖 Policy Question", use_container_width=True):
+    if st.button("📖 Policy Question", width=True):
         st.session_state.quick_message = "What is the overtime policy?"
 
     st.divider()
 
     # Clear chat button
-    if st.button("🗑️ Clear Chat", use_container_width=True):
+    if st.button("🗑️ Clear Chat", width=True):
         st.session_state.messages = []
         st.rerun()
 
@@ -304,7 +304,7 @@ with st.sidebar:
     st.markdown("### 🗄️ Database")
 
     # Refresh database button
-    if st.button("🔄 Refresh Database", use_container_width=True):
+    if st.button("🔄 Refresh Database", width=True):
         try:
             # Clear and reseed database
             response = requests.post(f"{API_URL}/reset-db", timeout=10)
@@ -333,25 +333,25 @@ with st.sidebar:
     if db_data:
         with st.expander("👥 Employees"):
             if db_data.get("employees"):
-                st.dataframe(db_data["employees"], use_container_width=True, hide_index=True)
+                st.dataframe(db_data["employees"], width=True, hide_index=True)
             else:
                 st.info("No employees")
 
         with st.expander("📅 Leave Requests"):
             if db_data.get("leave_requests"):
-                st.dataframe(db_data["leave_requests"], use_container_width=True, hide_index=True)
+                st.dataframe(db_data["leave_requests"], width=True, hide_index=True)
             else:
                 st.info("No leave requests")
 
         with st.expander("💰 Leave Balances"):
             if db_data.get("leave_balances"):
-                st.dataframe(db_data["leave_balances"], use_container_width=True, hide_index=True)
+                st.dataframe(db_data["leave_balances"], width=True, hide_index=True)
             else:
                 st.info("No balances")
 
         with st.expander("🎫 Tickets"):
             if db_data.get("tickets"):
-                st.dataframe(db_data["tickets"], use_container_width=True, hide_index=True)
+                st.dataframe(db_data["tickets"], width=True, hide_index=True)
             else:
                 st.info("No tickets")
 
@@ -363,7 +363,7 @@ with st.sidebar:
 # Header
 st.markdown("""
 <div class="main-header">
-    <h1>🧑‍💼 PeopleHub AI Assistant</h1>
+    <h1>🧑‍💼 Solvait AI Assistant</h1>
     <p style="color: #666;">مساعدك الذكي للموارد البشرية | Your Intelligent HR Assistant</p>
 </div>
 """, unsafe_allow_html=True)
@@ -373,7 +373,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
     # Welcome message
     welcome_msg = """
-مرحباً! 👋 أنا مساعد PeopleHub الذكي.
+مرحباً! 👋 أنا مساعد Solvait الذكي.
 
 يمكنني مساعدتك في:
 - ✅ الاستفسار عن رصيد الإجازات
@@ -386,7 +386,7 @@ if "messages" not in st.session_state:
 
 ---
 
-Hello! 👋 I'm PeopleHub AI Assistant.
+Hello! 👋 I'm Solvait AI Assistant.
 
 I can help you with:
 - ✅ Check leave balances
@@ -482,6 +482,6 @@ if prompt := st.chat_input("اكتب رسالتك هنا... / Type your message.
 
 st.markdown("---")
 st.markdown(
-    "<center><small>PeopleHub AI Assistant v0.1.0 | Powered by LlamaIndex + Gemini</small></center>",
+    "<center><small>Solvait AI Assistant v0.1.0</small></center>",
     unsafe_allow_html=True
 )

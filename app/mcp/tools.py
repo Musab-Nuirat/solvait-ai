@@ -196,18 +196,61 @@ def create_excuse(
 ) -> str:
     """
     Create an excuse request for late arrival or early departure.
-    
+
+    ⚠️ CRITICAL: DO NOT call this tool until you have:
+    1. Gathered ALL required information from the user
+    2. Shown a summary to the user
+    3. Received explicit confirmation ("yes", "نعم", "تمام")
+
+    Required information:
+    - excuse_date: If user didn't specify, use TODAY's date from context
+    - excuse_type: "late_arrival" or "early_departure"
+    - reason: MUST be provided by user - ASK if missing!
+    - start_time (for late_arrival): MUST be provided - ASK "What time did you arrive?"
+    - end_time (for early_departure): MUST be provided - ASK "What time did you leave?"
+
     Args:
         employee_id: The employee ID (e.g., "EMP001")
-        excuse_date: Date of the excuse in YYYY-MM-DD format
+        excuse_date: Date of the excuse in YYYY-MM-DD format (use today if not specified)
         excuse_type: Type: "late_arrival" or "early_departure"
-        reason: Reason for the excuse (required)
-        start_time: For late arrival, the actual arrival time (HH:MM format)
-        end_time: For early departure, the departure time (HH:MM format)
-    
+        reason: Reason for the excuse (REQUIRED - ask user if not provided!)
+        start_time: For late arrival, the actual arrival time (HH:MM format) - REQUIRED for late_arrival
+        end_time: For early departure, the departure time (HH:MM format) - REQUIRED for early_departure
+
     Returns:
         Success confirmation with excuse ID.
     """
+    # VALIDATION: Block if required info is missing
+    if not reason or reason.strip() == "":
+        return """❌ لا يمكن تسجيل الاستئذان بدون سبب!
+
+من فضلك اسأل المستخدم:
+"ما سبب التأخير/المغادرة المبكرة؟ (مثال: زحمة، موعد طبي، ظرف عائلي)"
+
+❌ Cannot submit excuse without a reason!
+Please ask the user: "What was the reason for being late/leaving early?"
+"""
+
+    if excuse_type == "late_arrival" and not start_time:
+        return """❌ لا يمكن تسجيل استئذان التأخر بدون وقت الوصول!
+
+من فضلك اسأل المستخدم:
+"كم كانت الساعة عند وصولك؟ (مثال: 8:30)"
+
+❌ Cannot submit late arrival excuse without arrival time!
+Please ask: "What time did you arrive?"
+"""
+
+    if excuse_type == "early_departure" and not end_time:
+        return """❌ لا يمكن تسجيل استئذان المغادرة المبكرة بدون وقت المغادرة!
+
+من فضلك اسأل المستخدم:
+"كم كانت الساعة عند مغادرتك؟ (مثال: 15:00)"
+
+❌ Cannot submit early departure excuse without departure time!
+Please ask: "What time did you leave?"
+"""
+
     with get_db_session() as db:
         service = HRService(db)
         try:

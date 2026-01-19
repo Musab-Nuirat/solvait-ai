@@ -1,4 +1,4 @@
-"""FastAPI Application - PeopleHub AI Assistant API."""
+"""FastAPI Application - Solvait AI Assistant API."""
 
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -20,7 +20,7 @@ from app.agent.hr_agent import get_hr_agent
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     # Startup
-    print("🚀 Starting PeopleHub AI Assistant...")
+    print("🚀 Starting Solvait AI Assistant...")
 
     # Initialize SQLite database
     init_db()
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
 # ============================================
 
 app = FastAPI(
-    title="PeopleHub AI Assistant",
+    title="Solvait AI Assistant",
     description="Intelligent HR Agent with RAG capabilities",
     version="0.1.0",
     lifespan=lifespan
@@ -99,7 +99,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "service": "PeopleHub AI Assistant",
+        "service": "Solvait AI Assistant",
         "version": "0.1.0"
     }
 

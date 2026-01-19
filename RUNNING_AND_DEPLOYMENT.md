@@ -2,7 +2,7 @@
 
 ## 💻 Local Development (Run Now)
 
-Follow these steps to run the **PeopleHub AI Assistant** locally on your machine.
+Follow these steps to run the **Solvait AI Assistant** locally on your machine.
 
 ### 1. Prerequisites
 Ensure you have Python 3.10+ installed.

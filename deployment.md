@@ -11,7 +11,7 @@
   2. Click "New +" → "Web Service"
   3. Connect your solvait repository
   4. Configure:
-    - Name: peoplehub-api
+    - Name: Solvait-api
     - Runtime: Python 3
     - Build Command: pip install -r requirements.txt
     - Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -20,7 +20,7 @@
     - GOOGLE_API_KEY = your key
     - DEBUG_MODE = false
   6. Click "Create Web Service"
-  7. Wait for deploy → Copy your URL (e.g., https://peoplehub-api.onrender.com)
+  7. Wait for deploy → Copy your URL (e.g., https://Solvait-api.onrender.com)
 
   ---
   Step 3: Deploy Frontend on Streamlit Cloud
@@ -32,7 +32,7 @@
     - Main file: streamlit_app.py
     - Branch: main
   5. Click "Advanced settings" → Add secret:
-  API_URL = "https://peoplehub-api.onrender.com"
+  API_URL = "https://Solvait-api.onrender.com"
   5. (use your actual Render URL)
   6. Click "Deploy"
 

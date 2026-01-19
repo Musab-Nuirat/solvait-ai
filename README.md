@@ -1,4 +1,4 @@
-# PeopleHub AI Assistant - POC
+# Solvait AI Assistant - POC
 
 An intelligent HR AI Agent built with LlamaIndex, supporting bilingual (Arabic/English) interactions.
 
@@ -125,7 +125,7 @@ AI: "Yes, according to Section 4.1 of the Employee Handbook, dental coverage is 
 # render.yaml
 services:
   - type: web
-    name: peoplehub-api
+    name: Solvait-api
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT

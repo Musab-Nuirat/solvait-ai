@@ -1,4 +1,4 @@
-"""SQLAlchemy database models for PeopleHub HR system."""
+"""SQLAlchemy database models for Solvait HR system."""
 
 from datetime import date, datetime, time
 from enum import Enum as PyEnum

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PeopleHub AI Assistant is an intelligent HR AI agent built with LlamaIndex and Gemini. It provides a conversational interface for employees to check leave balances, submit requests, view payslips, create tickets, and ask HR policy questions. The system supports bilingual interactions (Arabic/English).
+Solvait AI Assistant is an intelligent HR AI agent built with LlamaIndex and Gemini. It provides a conversational interface for employees to check leave balances, submit requests, view payslips, create tickets, and ask HR policy questions. The system supports bilingual interactions (Arabic/English).
 
 ## Commands
 

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: peoplehub-api
+    name: Solvait-api
     runtime: python
     region: frankfurt
     plan: free

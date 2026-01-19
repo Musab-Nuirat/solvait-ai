@@ -1,4 +1,4 @@
-"""Configuration management for PeopleHub AI Assistant."""
+"""Configuration management for Solvait AI Assistant."""
 
 import os
 from pathlib import Path

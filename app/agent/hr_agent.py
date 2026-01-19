@@ -1,4 +1,4 @@
-"""LlamaIndex HR Agent - The Brain of PeopleHub AI Assistant."""
+"""LlamaIndex HR Agent - The Brain of Solvait AI Assistant."""
 
 import asyncio
 from typing import Optional, List
@@ -62,8 +62,19 @@ class HRAgent:
         return tools
 
     def _build_system_prompt(self) -> str:
-        """Build the system prompt with employee context."""
-        context = f"\n\n## 👤 Current User Context\n"
+        """Build the system prompt with employee context and current date."""
+        from datetime import date
+
+        today = date.today()
+        today_str = today.strftime("%Y-%m-%d")
+        today_ar = today.strftime("%d/%m/%Y")
+
+        context = f"\n\n## 📅 Today's Date\n"
+        context += f"- Today is: **{today_str}** ({today_ar})\n"
+        context += f"- Use this date when the user says 'today', 'اليوم', or doesn't specify a date\n"
+        context += f"- For 'tomorrow' / 'غداً', use {(today + __import__('datetime').timedelta(days=1)).strftime('%Y-%m-%d')}\n"
+
+        context += f"\n## 👤 Current User Context\n"
         context += f"- The current user's Employee ID is: **{self.employee_id}**\n"
         context += f"- When the user says 'my', 'me', or 'I', they refer to employee {self.employee_id}\n"
         context += f"- ALWAYS use '{self.employee_id}' as the employee_id parameter when calling tools for this user\n"

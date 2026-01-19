@@ -250,7 +250,7 @@ class DocumentIngestion:
 
 # Sample policy content for testing
 SAMPLE_POLICY_MARKDOWN = """
-# PeopleHub Employee Handbook
+# Solvait Employee Handbook
 
 ## Chapter 1: Leave Policies
 
