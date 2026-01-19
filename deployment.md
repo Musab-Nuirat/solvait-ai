@@ -36,6 +36,37 @@ Step 1: Push to GitHub
     - PYTHON_VERSION = 3.11.7 (must be full version: major.minor.patch)
   6. Click "Create Web Service"
   7. Wait for deploy → Copy your URL (e.g., https://Solvait-api.onrender.com)
+  8. Test your backend:
+    - Visit https://your-backend-url.onrender.com/health
+    - Should return: {"status":"healthy","service":"Solvait AI Assistant","version":"0.1.0"}
+
+  ---
+  Step 2.5: Test Local Streamlit with Deployed Backend (Optional but Recommended)
+
+  Before deploying Streamlit Cloud, test locally that your Streamlit app can connect to the deployed backend:
+
+  1. Make sure your Render backend is deployed and running
+  2. Set the API_URL environment variable to point to your Render backend:
+    
+    Windows PowerShell:
+      $env:API_URL="https://solvait-api.onrender.com"
+    
+    Windows CMD:
+      set API_URL=https://solvait-api.onrender.com
+    
+    Linux/Mac:
+      export API_URL=https://solvait-api.onrender.com
+
+  3. Run Streamlit locally:
+      streamlit run streamlit_app.py
+
+  4. Test the connection:
+    - Open http://localhost:8501
+    - Try sending a message in the chat
+    - Check if database tables load in the sidebar
+    - Verify there are no connection errors
+
+  5. If everything works, you're ready to deploy to Streamlit Cloud!
 
   ---
   Step 3: Deploy Frontend on Streamlit Cloud
@@ -56,6 +87,8 @@ Step 1: Push to GitHub
 
   - Make sure your Render backend is fully deployed before deploying Streamlit frontend
   - The Streamlit app will use the API_URL environment variable to connect to your backend
+  - When setting API_URL secret in Streamlit Cloud, ensure there are NO trailing spaces
+    (e.g., use "https://Solvait-api.onrender.com" not "https://Solvait-api.onrender.com ")
   - If you see connection errors, verify the Render URL is correct and the backend is running
   - Free tier services on Render may spin down after inactivity - first request may be slow
 

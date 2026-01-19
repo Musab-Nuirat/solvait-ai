@@ -9,8 +9,22 @@ from typing import Optional, Tuple
 # CONFIGURATION
 # ============================================
 
-# API URL: Use environment variable for production, fallback to localhost for dev
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+# API URL: Use environment variable for production, fallback to Render backend for dev
+# Defaults to deployed Render backend. Override via:
+#   - Environment variable: API_URL
+#   - UI configuration (when running locally)
+#   Windows PowerShell: $env:API_URL="http://localhost:8000"  # to use local backend
+#   Windows CMD: set API_URL=http://localhost:8000
+#   Linux/Mac: export API_URL=http://localhost:8000
+_default_api_url = os.getenv("API_URL", "https://solvait-api.onrender.com").strip()
+
+# Initialize session state for API URL (allows UI override for local testing)
+if "api_url" not in st.session_state:
+    st.session_state.api_url = _default_api_url
+
+def get_api_url() -> str:
+    """Get the current API URL from session state or environment variable."""
+    return st.session_state.get("api_url", _default_api_url).strip()
 
 # Page config
 st.set_page_config(
@@ -119,7 +133,8 @@ def is_arabic(text: str) -> bool:
 def get_employees():
     """Fetch employee list from API."""
     try:
-        response = requests.get(f"{API_URL}/employees", timeout=5)
+        api_url = get_api_url()
+        response = requests.get(f"{api_url}/employees", timeout=5)
         if response.status_code == 200:
             return response.json()
     except:
@@ -149,8 +164,9 @@ def send_message(
                     "content": msg["content"]
                 })
 
+        api_url = get_api_url()
         response = requests.post(
-            f"{API_URL}/chat",
+            f"{api_url}/chat",
             json={
                 "user_id": user_id,
                 "message": message,
@@ -271,6 +287,24 @@ with st.sidebar:
     # Debug mode toggle
     st.markdown("### ⚙️ Settings")
     debug_mode = st.toggle("🔍 Show Debug Traces", value=False, help="Show RAG chunks, tool calls, and timing")
+    
+    # API URL configuration (only show in local dev, not in Streamlit Cloud)
+    # Hide in Streamlit Cloud where API_URL is set via secrets
+    current_api_url = get_api_url()
+    is_streamlit_cloud = os.getenv("API_URL") is not None
+    if not is_streamlit_cloud or "localhost" in current_api_url.lower():
+        st.markdown("---")
+        st.markdown("### 🔗 API Configuration")
+        api_url_input = st.text_input(
+            "Backend API URL:",
+            value=current_api_url,
+            help="Change this to test against deployed backend (e.g., https://solvait-api.onrender.com)"
+        )
+        if api_url_input != current_api_url:
+            st.session_state.api_url = api_url_input.strip()
+            # Clear cache when API URL changes
+            st.cache_data.clear()
+            st.rerun()
 
     st.divider()
 
@@ -317,7 +351,8 @@ with st.sidebar:
             try:
                 # Clear and reseed database
                 with st.spinner("Resetting database to initial state..."):
-                    response = requests.post(f"{API_URL}/reset-db", timeout=30)
+                    api_url = get_api_url()
+                    response = requests.post(f"{api_url}/reset-db", timeout=30)
                     if response.status_code == 200:
                         st.success("Database reset to initial state!")
                         # Clear cache to ensure fresh data
@@ -338,7 +373,8 @@ with st.sidebar:
     def get_db_tables():
         """Fetch all database tables from API."""
         try:
-            response = requests.get(f"{API_URL}/database", timeout=10)
+            api_url = get_api_url()
+            response = requests.get(f"{api_url}/database", timeout=10)
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
