@@ -66,8 +66,29 @@ class GoogleGenaiLLM(CustomLLM):
     def chat(self, messages: Sequence[ChatMessage], **kwargs: Any) -> ChatResponse:
         system_prompt, contents = self._prepare_messages(messages)
 
+        # Safety settings to allow legitimate HR conversations (resignation, complaints, etc.)
+        safety_settings = [
+            types.SafetySetting(
+                category="HARM_CATEGORY_HARASSMENT",
+                threshold="BLOCK_ONLY_HIGH"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_HATE_SPEECH",
+                threshold="BLOCK_ONLY_HIGH"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                threshold="BLOCK_ONLY_HIGH"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                threshold="BLOCK_ONLY_HIGH"
+            ),
+        ]
+
         generate_content_config = types.GenerateContentConfig(
-            system_instruction=system_prompt if system_prompt else None
+            system_instruction=system_prompt if system_prompt else None,
+            safety_settings=safety_settings
         )
 
         response = self.client.models.generate_content(

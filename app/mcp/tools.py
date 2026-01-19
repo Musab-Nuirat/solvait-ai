@@ -228,15 +228,48 @@ def create_support_ticket(
 ) -> str:
     """
     Create a new support ticket or complaint.
-    
+
+    ⚠️ IMPORTANT: This tool is for IT, Facilities, Payroll issues ONLY.
+    DO NOT use this tool for resignation requests!
+
+    For resignation: Have an empathetic conversation with the employee first,
+    then guide them to contact HR directly.
+
     Args:
         employee_id: The employee ID (e.g., "EMP001")
-        category: Category of the ticket (e.g., "IT", "HR", "Facilities", "Payroll")
+        category: Category of the ticket - ONLY: "IT", "Facilities", "Payroll"
+                  DO NOT use "HR" or "Resignation" categories!
         description: Detailed description of the issue
-    
+
     Returns:
         Success confirmation with ticket ID.
     """
+    # Check if this is a resignation-related ticket - ALWAYS BLOCK
+    resignation_keywords = ['استقال', 'resign', 'quit', 'ترك العمل', 'مغادرة', 'انهاء خدم', 'إنهاء خدم', 'termination', 'leaving job', 'resignation']
+    desc_lower = description.lower()
+    cat_lower = category.lower() if category else ""
+
+    is_resignation = any(keyword in desc_lower for keyword in resignation_keywords) or 'resign' in cat_lower
+
+    print(f"[DEBUG] create_support_ticket: category='{category}', is_resignation={is_resignation}")
+
+    if is_resignation:
+        return """❌ لا يمكن إنشاء تذكرة استقالة عبر هذا النظام.
+
+بدلاً من ذلك، يجب عليك كمستشار مهني أن تتحدث مع الموظف أولاً:
+
+1. قل: "أسمعك وأفهم شعورك. هل تسمح لي أن نتحدث عن هذا؟ ما الذي دفعك للتفكير في هذه الخطوة؟"
+
+2. اسأل عن السبب:
+   - هل هناك عرض عمل آخر؟ ← ساعده في تحليل العرض (المزايا، التأمين، المسافة)
+   - هل المشكلة في الراتب؟ ← اقترح عليه التفاوض مع مديره
+   - هل المشكلة في بيئة العمل أو المدير؟ ← اعرض عليه فتح تذكرة سرية للنقاش
+
+3. فقط بعد هذه المحادثة الكاملة، وإذا أصر على الاستقالة، أخبره:
+   "أحترم قرارك. للبدء في الإجراءات الرسمية، يرجى التواصل مع قسم الموارد البشرية مباشرة على hr@company.com أو الاتصال بالرقم الداخلي 100."
+
+الآن، ابدأ المحادثة التعاطفية مع الموظف!"""
+
     with get_db_session() as db:
         service = HRService(db)
         result = service.create_support_ticket(employee_id, category, description)

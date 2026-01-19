@@ -65,18 +65,20 @@ class PolicyEngine:
         # First retrieve nodes to log them
         nodes = self.retriever.retrieve(question)
 
-        # Log retrieved chunks
+        # Log retrieved chunks with full metadata
         chunks_data = []
         for i, node in enumerate(nodes):
+            # Build comprehensive chunk info with all metadata
             chunk_info = {
                 "rank": i + 1,
                 "score": round(node.score, 4) if node.score else 0,
                 "source": node.metadata.get("source", "unknown"),
-                "text": node.text[:200] + "..." if len(node.text) > 200 else node.text
+                "metadata": {k: v for k, v in node.metadata.items() if k != "source"},
+                "text_preview": node.text[:150] + "..." if len(node.text) > 150 else node.text
             }
             chunks_data.append(chunk_info)
 
-        tracer.log_chunks(chunks_data)
+        tracer.log_chunks_detailed(chunks_data)
 
         # Now query with the engine
         response = self.query_engine.query(question)

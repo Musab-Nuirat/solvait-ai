@@ -88,6 +88,48 @@ class Tracer:
         """Log retrieved chunks."""
         self.log("CHUNKS", f"Retrieved {len(chunks)} chunks", chunks)
 
+    def log_chunks_detailed(self, chunks: List[dict]):
+        """Log retrieved chunks with detailed source information."""
+        if not self.enabled:
+            return
+
+        print(f"\n\033[93m{'='*60}")
+        print(f"📚 RETRIEVED CHUNKS ({len(chunks)} results)")
+        print(f"{'='*60}\033[0m")
+
+        for chunk in chunks:
+            rank = chunk.get("rank", "?")
+            score = chunk.get("score", 0)
+            source = chunk.get("source", "unknown")
+            metadata = chunk.get("metadata", {})
+            text_preview = chunk.get("text_preview", "")
+
+            # Score color: green for high, yellow for medium, red for low
+            if score >= 0.8:
+                score_color = "\033[92m"  # Green
+            elif score >= 0.5:
+                score_color = "\033[93m"  # Yellow
+            else:
+                score_color = "\033[91m"  # Red
+
+            print(f"\n\033[96m[Chunk #{rank}]\033[0m {score_color}Score: {score:.4f}\033[0m")
+            print(f"  📄 Source: \033[95m{source}\033[0m")
+
+            # Print all metadata
+            if metadata:
+                meta_items = []
+                for key, value in metadata.items():
+                    meta_items.append(f"{key}={value}")
+                print(f"  🏷️  Metadata: {', '.join(meta_items)}")
+
+            # Print text preview with proper formatting
+            print(f"  📝 Text:")
+            # Indent and wrap text preview
+            wrapped_text = text_preview.replace('\n', '\n      ')
+            print(f"      {wrapped_text}")
+
+        print(f"\n\033[93m{'='*60}\033[0m\n")
+
     def log_tool_call(self, tool_name: str, args: dict):
         """Log tool invocation."""
         self.log("TOOL_CALL", f"Calling tool: {tool_name}", args)
