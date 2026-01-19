@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Environment variables (contains secrets)
+.env
+
+# Claude Code local settings
+.claude/
+
+# Database files (regenerated locally)
+data/hr_database.db
+data/*.db
+
+# Vector database (regenerated from documents)
+data/chroma_db/
+
+# Large manual files (download separately)
+data/manuals/*.docx
+data/manuals/*.pdf
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test/debug scripts (not part of main app)
+delete_rows.py
+list_models.py
+test_genai.py
+
+# Draft/planning documents (internal)
+draft.md
+fdd_content.txt
+final process.md
+
+# Logs
+*.log
+logs/
+
+# Distribution
+dist/
+build/
+*.egg-info/
