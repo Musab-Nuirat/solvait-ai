@@ -189,7 +189,7 @@ async def list_employees():
 async def get_database():
     """Get all database tables for frontend display."""
     from app.db.database import get_db_session
-    from app.db.models import Employee, LeaveBalance, LeaveRequest, Ticket
+    from app.db.models import Employee, LeaveBalance, LeaveRequest, Ticket, Payslip, Excuse
 
     with get_db_session() as db:
         # Employees
@@ -236,7 +236,26 @@ async def get_database():
             "employees": employees_data,
             "leave_balances": balances_data,
             "leave_requests": requests_data,
-            "tickets": tickets_data
+            "tickets": tickets_data,
+            # NEW: Add additional tables
+            "payslips": [
+                {
+                    "ID": str(p.id),
+                    "Employee": p.employee_id,
+                    "Period": f"{p.year}-{str(p.month).zfill(2)}",
+                    "Net Salary": p.net_salary
+                } for p in db.query(Payslip).all()
+            ],
+            "excuses": [
+                {
+                    "ID": str(e.id),
+                    "Employee": e.employee_id,
+                    "Date": str(e.date),
+                    "Type": e.excuse_type.value,
+                    "Time": str(e.start_time or e.end_time),
+                    "Reason": e.reason
+                } for e in db.query(Excuse).all()
+            ]
         }
 
 
@@ -245,13 +264,17 @@ async def reset_database():
     """Clear and reseed the database."""
     from app.db.database import SessionLocal, engine
     from app.db.models import Base
+    import time
 
     # Drop all tables and recreate
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    
+    # Small delay to ensure tables are fully created
+    time.sleep(0.1)
 
-    # Reseed
-    seed_database()
+    # Reseed with force=True to ensure it always seeds
+    seed_database(force=True)
 
     return {"status": "success", "message": "Database reset and reseeded"}
 

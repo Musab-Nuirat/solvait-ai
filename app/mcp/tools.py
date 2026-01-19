@@ -207,15 +207,18 @@ def create_excuse(
     - excuse_type: "late_arrival" or "early_departure"
     - reason: MUST be provided by user - ASK if missing!
     - start_time (for late_arrival): MUST be provided - ASK "What time did you arrive?"
+      ⚠️ CRITICAL: Use the EXACT time the user provided (e.g., "8:17", "08:17", "8.17"). 
+      DO NOT round, normalize, or modify the time. Pass it exactly as the user said it.
     - end_time (for early_departure): MUST be provided - ASK "What time did you leave?"
+      ⚠️ CRITICAL: Use the EXACT time the user provided. DO NOT round or modify it.
 
     Args:
         employee_id: The employee ID (e.g., "EMP001")
         excuse_date: Date of the excuse in YYYY-MM-DD format (use today if not specified)
         excuse_type: Type: "late_arrival" or "early_departure"
         reason: Reason for the excuse (REQUIRED - ask user if not provided!)
-        start_time: For late arrival, the actual arrival time (HH:MM format) - REQUIRED for late_arrival
-        end_time: For early departure, the departure time (HH:MM format) - REQUIRED for early_departure
+        start_time: For late arrival, the EXACT arrival time as provided by user (supports "8:17", "08:17", "8.17" formats) - REQUIRED for late_arrival
+        end_time: For early departure, the EXACT departure time as provided by user (supports "15:00", "3:00", "15.00" formats) - REQUIRED for early_departure
 
     Returns:
         Success confirmation with excuse ID.
@@ -223,12 +226,67 @@ def create_excuse(
     # VALIDATION: Block if required info is missing
     if not reason or reason.strip() == "":
         return """❌ لا يمكن تسجيل الاستئذان بدون سبب!
-
+        
 من فضلك اسأل المستخدم:
 "ما سبب التأخير/المغادرة المبكرة؟ (مثال: زحمة، موعد طبي، ظرف عائلي)"
 
 ❌ Cannot submit excuse without a reason!
 Please ask the user: "What was the reason for being late/leaving early?"
+"""
+
+    # VALIDATION: Block generic/hallucinated reasons
+    generic_reasons = [
+        "late", "late arrival", "delayed", "coming late", "traffic", "unspecified", 
+        "reason", "excuse", "تأخر", "تأخير", "زحمة", "بدون سبب", "سبب", "متاخر",
+        "نسيت", "forgot", "forgot to submit", "نسيت اقدم", "نسيت اقدم طلب",
+        "i forgot", "i was late", "كان متأخر", "تأخرت"
+    ]
+    
+    reason_lower = reason.lower().strip()
+    
+    # Block if reason is too generic or just describes the action
+    if reason_lower in generic_reasons:
+        return """❌ السبب المقدم غير كافٍ. يرجى طلب سبب محدد من المستخدم.
+
+من فضلك اسأل المستخدم:
+"ما هو السبب المحدد للتأخير/المغادرة المبكرة؟ (مثال: زحمة مرورية على الطريق السريع، موعد طبي، ظرف عائلي طارئ)"
+
+❌ The provided reason is insufficient. Please ask the user for a specific reason.
+
+Please ask: "What was the specific reason for being late/leaving early? (e.g., traffic jam on the highway, medical appointment, family emergency)"
+"""
+    
+    # Block if reason is too short (less than 5 characters) or just one word
+    if len(reason.strip()) < 5 or len(reason.split()) < 2:
+        return """❌ يرجى طلب سبب أكثر تفصيلاً من المستخدم.
+
+من فضلك اسأل المستخدم:
+"ما هو السبب المحدد للتأخير/المغادرة المبكرة؟"
+
+❌ Please ask the user for a more detailed reason.
+
+Please ask: "What was the specific reason for being late/leaving early?"
+"""
+
+    # VALIDATION: Check for suspicious times (LLM hallucination of duration as time)
+    # Example: User says "30 mins late", LLM sends "00:30". This must be blocked.
+    suspicious_time = False
+    time_val = start_time if excuse_type == "late_arrival" else end_time
+    
+    if time_val:
+        try:
+            h = int(time_val.split(':')[0])
+            if 0 <= h < 6:  # Block times between 00:00 and 05:59
+                suspicious_time = True
+        except:
+            pass
+            
+    if suspicious_time:
+        return f"""❌ Error: Time '{time_val}' looks suspicious (too early). 
+Did the user say a duration (e.g. "30 mins") and you interpreted it as a time?
+
+You MUST ASK the user for the specific CLOCK TIME.
+Example: "You said you were late 30 mins. What time did you actually arrive?"
 """
 
     if excuse_type == "late_arrival" and not start_time:
@@ -261,6 +319,15 @@ Please ask: "What time did you leave?"
         result = service.create_excuse(
             employee_id, exc_date, excuse_type, start_time, end_time, reason
         )
+        
+        # Handle error responses
+        if isinstance(result, dict) and result.get("error"):
+            return f"❌ Error: {result['error']}"
+        
+        # Return success message in Arabic if available
+        if isinstance(result, dict) and result.get("success"):
+            return result.get("message_ar", result.get("message", str(result)))
+        
         return str(result)
 
 

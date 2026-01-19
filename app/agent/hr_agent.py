@@ -69,9 +69,12 @@ class HRAgent:
         today_str = today.strftime("%Y-%m-%d")
         today_ar = today.strftime("%d/%m/%Y")
 
-        context = f"\n\n## 📅 Today's Date\n"
-        context += f"- Today is: **{today_str}** ({today_ar})\n"
-        context += f"- Use this date when the user says 'today', 'اليوم', or doesn't specify a date\n"
+        context = f"\n\n## 📅 TODAY'S DATE (CRITICAL CONTEXT)\n"
+        context += f"- Current Date: **{today_str}** (Arabic: {today_ar})\n"
+        context += f"- Day of Week: {today.strftime('%A')}\n"
+        context += f"- ⚠️ RULE: When user says 'today', 'اليوم', or doesn't specify a date, YOU MUST USE **{today_str}**.\n"
+        context += f"- ❌ DO NOT ask the user for the date if they imply today. Use the date above.\n"
+        context += f"- ❌ DO NOT hallucinate old dates like 2024. Today is **{today_str}** (Year 2026).\n"
         context += f"- For 'tomorrow' / 'غداً', use {(today + __import__('datetime').timedelta(days=1)).strftime('%Y-%m-%d')}\n"
 
         context += f"\n## 👤 Current User Context\n"
@@ -114,8 +117,16 @@ class HRAgent:
                     history_messages.append(ChatMessage(role=role, content=msg["content"]))
                 tracer.log("HISTORY", f"Loaded {len(history_messages)} previous messages")
 
-            # Inject employee context into message to ensure agent uses correct ID
-            context_prefix = f"[Context: Current user is employee {self.employee_id}. Use this ID for all tool calls.]\n\n"
+            # Inject employee context AND DATE into message to ensure agent uses correct ID and Date
+            from datetime import date
+            today_str = date.today().strftime("%Y-%m-%d")
+            context_prefix = f"""[SYSTEM CONTEXT]
+- Current Date: {today_str} (Use this for 'today')
+- Current Employee: {self.employee_id}
+- Rule: Do NOT ask for the date.
+[END SYSTEM CONTEXT]
+
+"""
             augmented_message = context_prefix + message
 
             tracer.log_llm("ReActAgent", "Starting reasoning loop")

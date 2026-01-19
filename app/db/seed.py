@@ -17,7 +17,7 @@ def get_next_monday() -> date:
     return today + timedelta(days=days_ahead)
 
 
-def seed_database():
+def seed_database(force: bool = False):
     """
     Populate database with SCENARIO-SPECIFIC mock data.
     
@@ -26,6 +26,9 @@ def seed_database():
        → When Ahmed tries to book same day, AI should warn about team conflict
     2. Insufficient Balance: Omar (EMP005) has only 2 days annual leave
     3. Eligibility Check: Omar hired < 1 year → Cannot request salary advance
+    
+    Args:
+        force: If True, skip the check and force reseeding even if data exists.
     """
     
     # Initialize tables
@@ -34,8 +37,8 @@ def seed_database():
     db = SessionLocal()
     
     try:
-        # Check if already seeded
-        if db.query(Employee).first():
+        # Check if already seeded (unless forcing)
+        if not force and db.query(Employee).first():
             print("✅ Database already seeded. Skipping...")
             return
         

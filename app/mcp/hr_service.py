@@ -314,39 +314,94 @@ class HRService:
     ) -> Dict[str, Any]:
         """Create an excuse request for late arrival or early departure."""
         
+        # Validate reason is provided
+        if not reason or not reason.strip():
+            return {"error": "Reason is required for excuse requests"}
+        
         # Validate excuse type
         try:
             et = ExcuseType(excuse_type.lower())
         except ValueError:
             return {"error": f"Invalid excuse type: {excuse_type}. Use: late_arrival or early_departure"}
         
-        # Parse times
+        # Parse times with error handling - supports both "8:17" and "08:17" formats
         from datetime import datetime
-        st = datetime.strptime(start_time, "%H:%M").time() if start_time else None
-        et_time = datetime.strptime(end_time, "%H:%M").time() if end_time else None
+        st = None
+        et_time = None
         
-        excuse = Excuse(
-            employee_id=employee_id,
-            date=excuse_date,
-            excuse_type=et,
-            start_time=st,
-            end_time=et_time,
-            reason=reason,
-            status=RequestStatus.PENDING
-        )
-        self.db.add(excuse)
-        self.db.commit()
+        def parse_time(time_str: str) -> tuple:
+            """Parse time string in various formats and return (hour, minute) tuple."""
+            if not time_str:
+                return None
+            
+            # Remove any whitespace
+            time_str = time_str.strip()
+            
+            # Handle formats like "8:17", "08:17", "8.17", "08.17"
+            if ':' in time_str:
+                parts = time_str.split(':')
+            elif '.' in time_str:
+                parts = time_str.split('.')
+            else:
+                return None
+            
+            if len(parts) != 2:
+                return None
+            
+            try:
+                hour = int(parts[0])
+                minute = int(parts[1])
+                
+                # Validate ranges
+                if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+                    return None
+                
+                return (hour, minute)
+            except ValueError:
+                return None
         
-        return {
-            "success": True,
-            "excuse_id": f"EX-{excuse.id:04d}",
-            "message": f"Excuse request submitted for {excuse_date}",
-            "details": {
-                "type": excuse_type,
-                "date": excuse_date.isoformat(),
-                "status": "pending"
+        if start_time:
+            parsed = parse_time(start_time)
+            if parsed is None:
+                return {"error": f"Invalid start_time format: {start_time}. Use HH:MM format (e.g., 8:17 or 08:17)"}
+            hour, minute = parsed
+            st = datetime.strptime(f"{hour:02d}:{minute:02d}", "%H:%M").time()
+        
+        if end_time:
+            parsed = parse_time(end_time)
+            if parsed is None:
+                return {"error": f"Invalid end_time format: {end_time}. Use HH:MM format (e.g., 15:00 or 8:17)"}
+            hour, minute = parsed
+            et_time = datetime.strptime(f"{hour:02d}:{minute:02d}", "%H:%M").time()
+        
+        try:
+            excuse = Excuse(
+                employee_id=employee_id,
+                date=excuse_date,
+                excuse_type=et,
+                start_time=st,
+                end_time=et_time,
+                reason=reason.strip(),
+                status=RequestStatus.PENDING
+            )
+            self.db.add(excuse)
+            self.db.flush()  # Get the ID before commit
+            self.db.commit()
+            
+            return {
+                "success": True,
+                "excuse_id": f"EX-{excuse.id:04d}",
+                "message": f"Excuse request submitted for {excuse_date}",
+                "message_ar": f"تم تسجيل طلب الاستئذان بنجاح. رقم الطلب EX-{excuse.id:04d}.",
+                "details": {
+                    "type": excuse_type,
+                    "date": excuse_date.isoformat(),
+                    "status": "pending"
+                }
             }
-        }
+        except Exception as e:
+            self.db.rollback()
+            return {"error": f"Failed to create excuse: {str(e)}"}
     
     def create_support_ticket(
         self,

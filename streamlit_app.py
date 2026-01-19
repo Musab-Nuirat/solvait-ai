@@ -277,22 +277,22 @@ with st.sidebar:
     # Quick actions
     st.markdown("### ⚡ Quick Actions")
 
-    if st.button("📊 Check Leave Balance", width=True):
+    if st.button("📊 Check Leave Balance", width='stretch'):
         st.session_state.quick_message = "كم رصيد إجازاتي؟"
 
-    if st.button("💰 View Payslip", width=True):
+    if st.button("💰 View Payslip", width='stretch'):
         st.session_state.quick_message = "أريد رؤية قسيمة راتبي"
 
-    if st.button("📋 Request Leave", width=True):
+    if st.button("📋 Request Leave", width='stretch'):
         st.session_state.quick_message = "أريد طلب إجازة يوم الاثنين القادم"
 
-    if st.button("📖 Policy Question", width=True):
+    if st.button("📖 Policy Question", width='stretch'):
         st.session_state.quick_message = "What is the overtime policy?"
 
     st.divider()
 
     # Clear chat button
-    if st.button("🗑️ Clear Chat", width=True):
+    if st.button("🗑️ Clear Chat", width='stretch'):
         st.session_state.messages = []
         st.rerun()
 
@@ -303,29 +303,46 @@ with st.sidebar:
     # ============================================
     st.markdown("### 🗄️ Database")
 
-    # Refresh database button
-    if st.button("🔄 Refresh Database", width=True):
-        try:
-            # Clear and reseed database
-            response = requests.post(f"{API_URL}/reset-db", timeout=10)
-            if response.status_code == 200:
-                st.success("Database refreshed!")
-                st.cache_data.clear()
-                st.rerun()
-            else:
-                st.error(f"Error: {response.status_code}")
-        except requests.exceptions.ConnectionError:
-            st.error("Server not running")
+    # Refresh database view button (just refreshes the display, doesn't reset data)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 Refresh View", width='stretch', help="Refresh the database view without resetting data"):
+            # Clear cache to ensure fresh data is fetched
+            st.cache_data.clear()
+            st.success("View refreshed!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🗑️ Reset Database", width='stretch', help="⚠️ WARNING: This will delete all data and reset to initial state"):
+            try:
+                # Clear and reseed database
+                with st.spinner("Resetting database to initial state..."):
+                    response = requests.post(f"{API_URL}/reset-db", timeout=30)
+                    if response.status_code == 200:
+                        st.success("Database reset to initial state!")
+                        # Clear cache to ensure fresh data
+                        st.cache_data.clear()
+                        # Small delay to ensure database is fully committed
+                        import time
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error(f"Error: {response.status_code}")
+            except requests.exceptions.ConnectionError:
+                st.error("Server not running")
+            except Exception as e:
+                st.error(f"Error resetting database: {str(e)}")
 
     # Fetch database tables
+    @st.cache_data(ttl=1)  # Cache for 1 second to avoid rapid refetches
     def get_db_tables():
         """Fetch all database tables from API."""
         try:
-            response = requests.get(f"{API_URL}/database", timeout=5)
+            response = requests.get(f"{API_URL}/database", timeout=10)
             if response.status_code == 200:
                 return response.json()
-        except:
-            pass
+        except Exception as e:
+            st.error(f"Error fetching database: {str(e)}")
         return None
 
     db_data = get_db_tables()
@@ -333,27 +350,39 @@ with st.sidebar:
     if db_data:
         with st.expander("👥 Employees"):
             if db_data.get("employees"):
-                st.dataframe(db_data["employees"], width=True, hide_index=True)
+                st.dataframe(db_data["employees"], width='stretch', hide_index=True)
             else:
                 st.info("No employees")
 
         with st.expander("📅 Leave Requests"):
             if db_data.get("leave_requests"):
-                st.dataframe(db_data["leave_requests"], width=True, hide_index=True)
+                st.dataframe(db_data["leave_requests"], width='stretch', hide_index=True)
             else:
                 st.info("No leave requests")
 
         with st.expander("💰 Leave Balances"):
             if db_data.get("leave_balances"):
-                st.dataframe(db_data["leave_balances"], width=True, hide_index=True)
+                st.dataframe(db_data["leave_balances"], width='stretch', hide_index=True)
             else:
                 st.info("No balances")
 
         with st.expander("🎫 Tickets"):
             if db_data.get("tickets"):
-                st.dataframe(db_data["tickets"], width=True, hide_index=True)
+                st.dataframe(db_data["tickets"], width='stretch', hide_index=True)
             else:
                 st.info("No tickets")
+
+        with st.expander("💸 Payslips"):
+            if db_data.get("payslips"):
+                st.dataframe(db_data["payslips"], width='stretch', hide_index=True)
+            else:
+                st.info("No payslips")
+
+        with st.expander("⏳ Excuses"):
+            if db_data.get("excuses"):
+                st.dataframe(db_data["excuses"], width='stretch', hide_index=True)
+            else:
+                st.info("No excuses")
 
 
 # ============================================
