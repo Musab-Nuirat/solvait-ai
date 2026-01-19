@@ -1,5 +1,6 @@
 """Streamlit Chat UI for PeopleHub AI Assistant."""
 
+import os
 import streamlit as st
 import requests
 from typing import Optional, Tuple
@@ -8,7 +9,8 @@ from typing import Optional, Tuple
 # CONFIGURATION
 # ============================================
 
-API_URL = "http://localhost:8000"
+# API URL: Use environment variable for production, fallback to localhost for dev
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # Page config
 st.set_page_config(
@@ -293,6 +295,65 @@ with st.sidebar:
     if st.button("🗑️ Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
+
+    st.divider()
+
+    # ============================================
+    # DATABASE VIEWER
+    # ============================================
+    st.markdown("### 🗄️ Database")
+
+    # Refresh database button
+    if st.button("🔄 Refresh Database", use_container_width=True):
+        try:
+            # Clear and reseed database
+            response = requests.post(f"{API_URL}/reset-db", timeout=10)
+            if response.status_code == 200:
+                st.success("Database refreshed!")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(f"Error: {response.status_code}")
+        except requests.exceptions.ConnectionError:
+            st.error("Server not running")
+
+    # Fetch database tables
+    def get_db_tables():
+        """Fetch all database tables from API."""
+        try:
+            response = requests.get(f"{API_URL}/database", timeout=5)
+            if response.status_code == 200:
+                return response.json()
+        except:
+            pass
+        return None
+
+    db_data = get_db_tables()
+
+    if db_data:
+        with st.expander("👥 Employees"):
+            if db_data.get("employees"):
+                st.dataframe(db_data["employees"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No employees")
+
+        with st.expander("📅 Leave Requests"):
+            if db_data.get("leave_requests"):
+                st.dataframe(db_data["leave_requests"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No leave requests")
+
+        with st.expander("💰 Leave Balances"):
+            if db_data.get("leave_balances"):
+                st.dataframe(db_data["leave_balances"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No balances")
+
+        with st.expander("🎫 Tickets"):
+            if db_data.get("tickets"):
+                st.dataframe(db_data["tickets"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No tickets")
 
 
 # ============================================

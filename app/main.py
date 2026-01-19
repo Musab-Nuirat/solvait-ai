@@ -21,9 +21,18 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     # Startup
     print("🚀 Starting PeopleHub AI Assistant...")
+
+    # Initialize SQLite database
     init_db()
     seed_database()
-    print("✅ Database ready")
+    print("✅ SQLite database ready")
+
+    # Initialize ChromaDB and ingest documents (creates vectors on fresh deploy)
+    print("📚 Initializing RAG system...")
+    from app.rag.policy_engine import get_policy_engine
+    policy_engine = get_policy_engine()
+    print("✅ ChromaDB ready with policy documents")
+
     yield
     # Shutdown
     print("👋 Shutting down...")
@@ -174,6 +183,77 @@ async def list_employees():
             }
             for e in employees
         ]
+
+
+@app.get("/database")
+async def get_database():
+    """Get all database tables for frontend display."""
+    from app.db.database import get_db_session
+    from app.db.models import Employee, LeaveBalance, LeaveRequest, Ticket
+
+    with get_db_session() as db:
+        # Employees
+        employees = db.query(Employee).all()
+        employees_data = [
+            {"ID": e.id, "Name": e.name, "Dept": e.department, "Title": e.title}
+            for e in employees
+        ]
+
+        # Leave balances
+        balances = db.query(LeaveBalance).all()
+        balances_data = [
+            {"Employee": b.employee_id, "Type": b.leave_type.value, "Days": b.balance_days}
+            for b in balances
+        ]
+
+        # Leave requests
+        requests = db.query(LeaveRequest).all()
+        requests_data = [
+            {
+                "ID": r.id,
+                "Employee": r.employee_id,
+                "Type": r.leave_type.value,
+                "From": str(r.start_date),
+                "To": str(r.end_date),
+                "Status": r.status.value
+            }
+            for r in requests
+        ]
+
+        # Tickets
+        tickets = db.query(Ticket).all()
+        tickets_data = [
+            {
+                "ID": f"TK-{t.id:04d}",
+                "Employee": t.employee_id,
+                "Category": t.category,
+                "Status": t.status.value
+            }
+            for t in tickets
+        ]
+
+        return {
+            "employees": employees_data,
+            "leave_balances": balances_data,
+            "leave_requests": requests_data,
+            "tickets": tickets_data
+        }
+
+
+@app.post("/reset-db")
+async def reset_database():
+    """Clear and reseed the database."""
+    from app.db.database import SessionLocal, engine
+    from app.db.models import Base
+
+    # Drop all tables and recreate
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    # Reseed
+    seed_database()
+
+    return {"status": "success", "message": "Database reset and reseeded"}
 
 
 # ============================================
