@@ -25,7 +25,7 @@ Step 1: Push to GitHub
   3. Connect your solvait repository
   4. Configure:
     - Name: Solvait-api
-    - Runtime: Python 3.11 (or use runtime.txt which specifies 3.11.7)
+    - Runtime: Python 3.11.7 (must specify full version: major.minor.patch)
     - Build Command: pip install -r requirements.txt
     - Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     - Plan: Free
@@ -33,6 +33,7 @@ Step 1: Push to GitHub
     - GOOGLE_API_KEY = your Google API key
     - LLAMA_CLOUD_API_KEY = your LlamaCloud API key (optional, if using LlamaParse)
     - DEBUG_MODE = false
+    - PYTHON_VERSION = 3.11.7 (must be full version: major.minor.patch)
   6. Click "Create Web Service"
   7. Wait for deploy → Copy your URL (e.g., https://Solvait-api.onrender.com)
 
