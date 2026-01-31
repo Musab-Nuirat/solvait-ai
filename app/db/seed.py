@@ -100,7 +100,7 @@ def seed_database(force: bool = False):
         db.add_all(employees)
         db.flush()
         
-        print("✅ Created 5 employees with team structure")
+        print("[OK] Created 5 employees with team structure")
         
         # ============================================
         # LEAVE BALANCES
@@ -165,16 +165,38 @@ def seed_database(force: bool = False):
         print(f"✅ Created Khalid's approved leave on 2026-01-26 (fixed test date)")
         
         # ============================================
-        # PAYSLIPS - Last 3 months
+        # PAYSLIPS - Last 3 months (Detailed Breakdown)
         # ============================================
         salary_data = {
-            "EMP001": {"basic": 15000, "housing": 3000, "transport": 500, "other": 1000, "deductions": 1500},
-            "EMP002": {"basic": 12000, "housing": 2500, "transport": 500, "other": 800, "deductions": 1200},
-            "EMP003": {"basic": 20000, "housing": 4000, "transport": 500, "other": 2000, "deductions": 2000},
-            "EMP004": {"basic": 11000, "housing": 2200, "transport": 500, "other": 600, "deductions": 1100},
-            "EMP005": {"basic": 7000, "housing": 1500, "transport": 500, "other": 300, "deductions": 700},
+            "EMP001": {
+                "basic": 15000,
+                # Allowances
+                "housing": 3000, "transport": 500, "phone": 200, "meal": 300, "other_allowances": 500,
+                # Deductions
+                "gosi": 937.50, "tax": 0, "loan": 500, "absence": 0, "other_deductions": 62.50
+            },
+            "EMP002": {
+                "basic": 12000,
+                "housing": 2500, "transport": 500, "phone": 150, "meal": 250, "other_allowances": 400,
+                "gosi": 750, "tax": 0, "loan": 0, "absence": 0, "other_deductions": 50
+            },
+            "EMP003": {
+                "basic": 20000,
+                "housing": 4000, "transport": 500, "phone": 300, "meal": 400, "other_allowances": 800,
+                "gosi": 1250, "tax": 0, "loan": 1000, "absence": 0, "other_deductions": 100
+            },
+            "EMP004": {
+                "basic": 11000,
+                "housing": 2200, "transport": 500, "phone": 100, "meal": 200, "other_allowances": 300,
+                "gosi": 687.50, "tax": 0, "loan": 0, "absence": 0, "other_deductions": 50
+            },
+            "EMP005": {
+                "basic": 7000,
+                "housing": 1500, "transport": 500, "phone": 100, "meal": 150, "other_allowances": 200,
+                "gosi": 437.50, "tax": 0, "loan": 0, "absence": 0, "other_deductions": 25
+            },
         }
-        
+
         payslips = []
         for emp_id, data in salary_data.items():
             for month_offset in range(3):  # Current, last month, 2 months ago
@@ -183,22 +205,37 @@ def seed_database(force: bool = False):
                 if current_month <= 0:
                     current_month += 12
                     current_year -= 1
-                
-                net = data["basic"] + data["housing"] + data["transport"] + data["other"] - data["deductions"]
+
+                # Calculate totals
+                total_allowances = (data["housing"] + data["transport"] + data["phone"] +
+                                    data["meal"] + data["other_allowances"])
+                total_deductions = (data["gosi"] + data["tax"] + data["loan"] +
+                                    data["absence"] + data["other_deductions"])
+                net = data["basic"] + total_allowances - total_deductions
+
                 payslips.append(Payslip(
                     employee_id=emp_id,
                     month=current_month,
                     year=current_year,
-                    net_salary=net,
                     basic_salary=data["basic"],
+                    # Allowances
                     housing_allowance=data["housing"],
                     transport_allowance=data["transport"],
-                    other_allowances=data["other"],
-                    deductions=data["deductions"]
+                    phone_allowance=data["phone"],
+                    meal_allowance=data["meal"],
+                    other_allowances=data["other_allowances"],
+                    # Deductions
+                    gosi_deduction=data["gosi"],
+                    tax_deduction=data["tax"],
+                    loan_deduction=data["loan"],
+                    absence_deduction=data["absence"],
+                    other_deductions=data["other_deductions"],
+                    deductions=total_deductions,  # Legacy total
+                    net_salary=net
                 ))
-        
+
         db.add_all(payslips)
-        print("✅ Created 15 payslips (3 months × 5 employees)")
+        print("✅ Created 15 payslips (3 months × 5 employees) with detailed breakdown")
         
         # ============================================
         # SAMPLE TICKET - For status check testing

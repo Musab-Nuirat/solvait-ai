@@ -148,37 +148,91 @@ class HRService:
         }
     
     def get_payslip(
-        self, 
-        employee_id: str, 
-        month: Optional[int] = None, 
+        self,
+        employee_id: str,
+        month: Optional[int] = None,
         year: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Get payslip for an employee."""
+        """Get payslip for an employee with full breakdown."""
         query = self.db.query(Payslip).filter(Payslip.employee_id == employee_id)
-        
+
         if month and year:
             query = query.filter(Payslip.month == month, Payslip.year == year)
         else:
             # Get latest payslip
             query = query.order_by(Payslip.year.desc(), Payslip.month.desc())
-        
+
         payslip = query.first()
-        
+
         if not payslip:
             return {"error": f"No payslip found for employee {employee_id}"}
-        
+
+        # Get month name for display
+        month_names = {
+            1: "January", 2: "February", 3: "March", 4: "April",
+            5: "May", 6: "June", 7: "July", 8: "August",
+            9: "September", 10: "October", 11: "November", 12: "December"
+        }
+        month_names_ar = {
+            1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
+            5: "مايو", 6: "يونيو", 7: "يوليو", 8: "أغسطس",
+            9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"
+        }
+
+        # Calculate totals
+        total_allowances = (
+            (payslip.housing_allowance or 0) +
+            (payslip.transport_allowance or 0) +
+            (payslip.phone_allowance or 0) +
+            (payslip.meal_allowance or 0) +
+            (payslip.other_allowances or 0)
+        )
+
+        total_deductions = (
+            (payslip.gosi_deduction or 0) +
+            (payslip.tax_deduction or 0) +
+            (payslip.loan_deduction or 0) +
+            (payslip.absence_deduction or 0) +
+            (payslip.other_deductions or 0)
+        )
+
         return {
             "employee_id": employee_id,
             "period": f"{payslip.year}-{str(payslip.month).zfill(2)}",
+            "period_display": f"{month_names.get(payslip.month, payslip.month)} {payslip.year}",
+            "period_display_ar": f"{month_names_ar.get(payslip.month, payslip.month)} {payslip.year}",
             "net_salary": payslip.net_salary,
-            "breakdown": {
-                "basic_salary": payslip.basic_salary,
-                "housing_allowance": payslip.housing_allowance,
-                "transport_allowance": payslip.transport_allowance,
-                "other_allowances": payslip.other_allowances,
-                "total_allowances": payslip.housing_allowance + payslip.transport_allowance + payslip.other_allowances,
-                "deductions": payslip.deductions
-            }
+            "basic_salary": payslip.basic_salary,
+            "allowances": {
+                "housing_allowance": payslip.housing_allowance or 0,
+                "housing_allowance_ar": "بدل سكن",
+                "transport_allowance": payslip.transport_allowance or 0,
+                "transport_allowance_ar": "بدل مواصلات",
+                "phone_allowance": payslip.phone_allowance or 0,
+                "phone_allowance_ar": "بدل هاتف",
+                "meal_allowance": payslip.meal_allowance or 0,
+                "meal_allowance_ar": "بدل طعام",
+                "other_allowances": payslip.other_allowances or 0,
+                "other_allowances_ar": "بدلات أخرى",
+                "total": total_allowances,
+                "total_ar": "إجمالي البدلات"
+            },
+            "deductions": {
+                "gosi_deduction": payslip.gosi_deduction or 0,
+                "gosi_deduction_ar": "التأمينات الاجتماعية (GOSI)",
+                "tax_deduction": payslip.tax_deduction or 0,
+                "tax_deduction_ar": "ضريبة الدخل",
+                "loan_deduction": payslip.loan_deduction or 0,
+                "loan_deduction_ar": "قسط القرض",
+                "absence_deduction": payslip.absence_deduction or 0,
+                "absence_deduction_ar": "خصم الغياب",
+                "other_deductions": payslip.other_deductions or 0,
+                "other_deductions_ar": "استقطاعات أخرى",
+                "total": total_deductions,
+                "total_ar": "إجمالي الاستقطاعات"
+            },
+            "download_available": False,
+            "download_note": "📥 Download option coming soon! / خيار التحميل قريباً!"
         }
     
     def get_ticket_status(self, ticket_id: int) -> Dict[str, Any]:

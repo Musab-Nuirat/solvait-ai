@@ -20,20 +20,29 @@ from app.agent.hr_agent import get_hr_agent
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     import asyncio
-    
+    import sys
+
+    # Fix encoding for Windows console
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+
     # Startup
-    print("🚀 Starting Solvait AI Assistant...")
+    print("[START] Starting Solvait AI Assistant...")
 
     # Initialize SQLite database
     init_db()
     seed_database()
-    print("✅ SQLite database ready")
+    print("[OK] SQLite database ready")
 
     # Initialize ChromaDB and ingest documents (creates vectors on fresh deploy)
-    print("📚 Initializing RAG system...")
+    print("[LOAD] Initializing RAG system...")
     from app.rag.policy_engine import get_policy_engine
     policy_engine = get_policy_engine()
-    print("✅ ChromaDB ready with policy documents")
+    print("[OK] ChromaDB ready with policy documents")
 
     # Yield control to the application
     try:
@@ -44,7 +53,7 @@ async def lifespan(app: FastAPI):
     finally:
         # Shutdown cleanup
         try:
-            print("👋 Shutting down gracefully...")
+            print("[STOP] Shutting down gracefully...")
             # Add any cleanup logic here if needed (e.g., close database connections)
         except Exception:
             # Suppress any errors during shutdown
@@ -245,17 +254,30 @@ async def get_database():
             for t in tickets
         ]
 
+        # Helper to safely get attribute with default
+        def safe_get(obj, attr, default=0):
+            return getattr(obj, attr, default) or default
+
         return {
             "employees": employees_data,
             "leave_balances": balances_data,
             "leave_requests": requests_data,
             "tickets": tickets_data,
-            # NEW: Add additional tables
+            # Detailed payslips view
             "payslips": [
                 {
                     "ID": str(p.id),
                     "Employee": p.employee_id,
                     "Period": f"{p.year}-{str(p.month).zfill(2)}",
+                    "Basic": p.basic_salary,
+                    "Housing": safe_get(p, 'housing_allowance'),
+                    "Transport": safe_get(p, 'transport_allowance'),
+                    "Phone": safe_get(p, 'phone_allowance'),
+                    "Meal": safe_get(p, 'meal_allowance'),
+                    "Other Allow": safe_get(p, 'other_allowances'),
+                    "GOSI": safe_get(p, 'gosi_deduction'),
+                    "Tax": safe_get(p, 'tax_deduction'),
+                    "Loan": safe_get(p, 'loan_deduction'),
                     "Net Salary": p.net_salary
                 } for p in db.query(Payslip).all()
             ],
@@ -266,7 +288,8 @@ async def get_database():
                     "Date": str(e.date),
                     "Type": e.excuse_type.value,
                     "Time": str(e.start_time or e.end_time),
-                    "Reason": e.reason
+                    "Reason": e.reason,
+                    "Status": e.status.value
                 } for e in db.query(Excuse).all()
             ]
         }

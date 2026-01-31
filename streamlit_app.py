@@ -16,6 +16,7 @@ from typing import Optional, Tuple
 #   Windows PowerShell: $env:API_URL="http://localhost:8000"  # to use local backend
 #   Windows CMD: set API_URL=http://localhost:8000
 #   Linux/Mac: export API_URL=http://localhost:8000
+# _default_api_url = os.getenv("API_URL", "http://localhost:8000").strip()
 _default_api_url = os.getenv("API_URL", "https://solvait-api.onrender.com").strip()
 
 # Initialize session state for API URL (allows UI override for local testing)
@@ -260,7 +261,7 @@ with st.sidebar:
 
     employees = get_employees()
 
-    # Create dropdown options
+    # Create dropdown options (show all 5 employees)
     emp_options = {f"{e['name_ar']} ({e['id']})": e['id'] for e in employees}
 
     selected_display = st.selectbox(

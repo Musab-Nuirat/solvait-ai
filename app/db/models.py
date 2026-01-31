@@ -88,12 +88,29 @@ class Payslip(Base):
     employee_id = Column(String(10), ForeignKey("employees.id"), nullable=False)
     month = Column(Integer, nullable=False)  # 1-12
     year = Column(Integer, nullable=False)
-    net_salary = Column(Float, nullable=False)
+
+    # Base salary
     basic_salary = Column(Float, nullable=False)
+
+    # Allowances breakdown
     housing_allowance = Column(Float, default=0)
     transport_allowance = Column(Float, default=0)
+    phone_allowance = Column(Float, default=0)       # NEW: Mobile/phone allowance
+    meal_allowance = Column(Float, default=0)        # NEW: Food/meal allowance
     other_allowances = Column(Float, default=0)
-    deductions = Column(Float, default=0)
+
+    # Deductions breakdown
+    gosi_deduction = Column(Float, default=0)        # NEW: Social insurance (GOSI)
+    tax_deduction = Column(Float, default=0)         # NEW: Income tax
+    loan_deduction = Column(Float, default=0)        # NEW: Loan repayments
+    absence_deduction = Column(Float, default=0)     # NEW: Absence/late deductions
+    other_deductions = Column(Float, default=0)      # NEW: Other deductions
+
+    # Legacy field (kept for backward compatibility, now computed)
+    deductions = Column(Float, default=0)            # Total deductions
+
+    # Net salary (computed)
+    net_salary = Column(Float, nullable=False)
 
     employee = relationship("Employee", back_populates="payslips")
 

@@ -31,18 +31,40 @@ def get_employee_profile(employee_id: str) -> str:
 def get_leave_balance(employee_id: str, leave_type: Optional[str] = None) -> str:
     """
     Get the leave balance for an employee.
-    
+
     Args:
         employee_id: The employee ID (e.g., "EMP001")
-        leave_type: Optional. Type of leave: "annual", "sick", or "unpaid". 
+        leave_type: Optional. Type of leave: "annual", "sick", or "unpaid".
                    If not specified, returns all leave types.
-    
+
     Returns:
-        Leave balance information showing remaining days for each leave type.
+        EXACT text to display to user - DO NOT REPHRASE OR SUMMARIZE!
     """
     with get_db_session() as db:
         service = HRService(db)
         result = service.get_leave_balance(employee_id, leave_type)
+
+        if isinstance(result, dict) and "balances" in result:
+            balances = result["balances"]
+
+            # Build the EXACT response text
+            lines = []
+            lines.append("**Your Leave Balance:**")
+            lines.append("")
+            for b in balances:
+                leave_name = b["type"].title()
+                days = b["remaining_days"]
+                if b["type"] == "annual":
+                    lines.append(f"- Annual Leave: {days} days remaining")
+                elif b["type"] == "sick":
+                    lines.append(f"- Sick Leave: {days} days remaining")
+                elif b["type"] == "unpaid":
+                    lines.append(f"- Unpaid Leave: {days} days remaining")
+            lines.append("")
+            lines.append("Would you like me to help you request a new leave now?")
+
+            return "\n".join(lines)
+
         return str(result)
 
 
@@ -89,21 +111,55 @@ def get_team_calendar(department: str, start_date: str, end_date: str) -> str:
         return str(result)
 
 
-def get_payslip(employee_id: str, month: Optional[int] = None, year: Optional[int] = None) -> str:
+def get_payslip(employee_id: str, month: Optional[int] = None, year: Optional[int] = None, user_said_latest: bool = False) -> str:
     """
     Get the payslip for an employee.
-    
+
     Args:
         employee_id: The employee ID (e.g., "EMP001")
-        month: Optional. Month number (1-12). If not specified, returns latest payslip.
-        year: Optional. Year (e.g., 2024). Required if month is specified.
-    
+        month: Month number (1-12). Leave empty to get latest.
+        year: Year (e.g., 2024).
+        user_said_latest: Set True if user said "latest" or "الأخير".
+
     Returns:
-        Payslip details including net salary, allowances breakdown, and deductions.
+        Payslip with full breakdown and download note.
     """
     with get_db_session() as db:
         service = HRService(db)
         result = service.get_payslip(employee_id, month, year)
+
+        if isinstance(result, dict) and not result.get("error"):
+            # Build formatted payslip response
+            p = result
+            period = p.get("period_display", p.get("period", ""))
+            basic = p.get("basic_salary", 0)
+            net = p.get("net_salary", 0)
+            allowances = p.get("allowances", {})
+            deductions = p.get("deductions", {})
+
+            lines = [f"**Payslip for {period}:**", ""]
+            lines.append(f"Basic Salary: SAR {basic:,.0f}")
+            lines.append("")
+            lines.append("**Allowances:**")
+            lines.append(f"- Housing: SAR {allowances.get('housing_allowance', 0):,.0f}")
+            lines.append(f"- Transport: SAR {allowances.get('transport_allowance', 0):,.0f}")
+            lines.append(f"- Phone: SAR {allowances.get('phone_allowance', 0):,.0f}")
+            lines.append(f"- Meal: SAR {allowances.get('meal_allowance', 0):,.0f}")
+            lines.append(f"- Other: SAR {allowances.get('other_allowances', 0):,.0f}")
+            lines.append(f"- **Total Allowances: SAR {allowances.get('total', 0):,.0f}**")
+            lines.append("")
+            lines.append("**Deductions:**")
+            lines.append(f"- GOSI: SAR {deductions.get('gosi_deduction', 0):,.0f}")
+            lines.append(f"- Tax: SAR {deductions.get('tax_deduction', 0):,.0f}")
+            lines.append(f"- Loan: SAR {deductions.get('loan_deduction', 0):,.0f}")
+            lines.append(f"- **Total Deductions: SAR {deductions.get('total', 0):,.0f}**")
+            lines.append("")
+            lines.append(f"**Net Salary: SAR {net:,.0f}**")
+            lines.append("")
+            lines.append("Download option coming soon!")
+
+            return "\n".join(lines)
+
         return str(result)
 
 
@@ -124,6 +180,33 @@ def get_ticket_status(ticket_id: int) -> str:
 
 
 # ============================================
+# UTILITY TOOLS
+# ============================================
+
+def handle_cancel_request(user_message: str) -> str:
+    """
+    Check if the user wants to cancel the current operation.
+
+    Call this tool when the user says: cancel, stop, abort, never mind, إلغاء, توقف, لا أريد, خلاص
+
+    Args:
+        user_message: The user's message to check for cancel intent.
+
+    Returns:
+        Confirmation that the operation was cancelled.
+    """
+    cancel_keywords = ["cancel", "stop", "abort", "never mind", "nevermind", "forget it",
+                       "إلغاء", "توقف", "لا أريد", "خلاص", "الغاء", "لا", "كنسل"]
+
+    msg_lower = user_message.lower().strip()
+
+    if any(keyword in msg_lower for keyword in cancel_keywords):
+        return """{"cancelled": true, "message": "No problem! The request has been cancelled. How else can I help you?", "message_ar": "لا مشكلة! تم إلغاء الطلب. كيف يمكنني مساعدتك؟"}"""
+
+    return """{"cancelled": false, "message": "This doesn't appear to be a cancel request."}"""
+
+
+# ============================================
 # WRITE TOOLS
 # ============================================
 
@@ -133,86 +216,31 @@ def submit_leave_request(
     start_date: str,
     end_date: str,
     reason: Optional[str] = None,
-    confirm_conflicts: bool = False,
-    user_confirmed: bool = False
+    confirm_conflicts: bool = False
 ) -> str:
     """
     Submit a new leave request for an employee.
 
-    ⚠️ CRITICAL: DO NOT call this tool until you have ALL required information from the user:
-    - leave_type: The user MUST specify annual, sick, or unpaid
-    - start_date: The user MUST provide the start date
-    - end_date: The user MUST provide the end date
-
-    If ANY of these are missing, ASK THE USER first. Do NOT invent or assume dates.
-
-    🛑 MANDATORY CONFIRMATION WORKFLOW:
-    1. Gather all info (leave_type, start_date, end_date)
-    2. Call get_leave_balance to check current balance
-    3. Show user a CONFIRMATION SUMMARY:
-       "📋 Leave Request Summary:
-        Type: [leave_type]
-        From: [start_date]
-        To: [end_date]
-        Duration: [X days]
-        Your balance: [current] → [remaining] days
-
-        Do you want to submit this request? (Yes/No)"
-    4. Wait for explicit "yes" / "نعم" / "تمام" / "confirm"
-    5. ONLY THEN call this function with user_confirmed=True
-
     ⚠️ CONFLICT HANDLING:
-    - First call with confirm_conflicts=False
+    - First call with confirm_conflicts=False (default) - checks for team conflicts
     - If result contains "warning": "team_conflict":
-       - Tell the user about the conflicting team members
-       - Ask if they want to proceed anyway
-    - Only if user confirms, call again with confirm_conflicts=True
+      * Tell the user about conflicting team members
+      * Ask if they want to proceed anyway
+    - If user confirms, call again with confirm_conflicts=True
 
     Args:
         employee_id: The employee ID (e.g., "EMP001")
         leave_type: Type of leave: "annual", "sick", or "unpaid"
-        start_date: Start date in YYYY-MM-DD format (MUST be provided by user, not invented!)
-        end_date: End date in YYYY-MM-DD format (MUST be provided by user, not invented!)
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
         reason: Optional reason for the leave
-        confirm_conflicts: Set to True ONLY after user confirms they want to proceed despite team conflicts
-        user_confirmed: Set to True ONLY after user explicitly confirms the summary. Required!
+        confirm_conflicts: Set to True ONLY after user confirms despite team conflicts
 
     Returns:
-        - If user_confirmed=False: Instructions to show confirmation summary
         - If conflicts exist and confirm_conflicts=False: Warning with conflict details
-        - If no conflicts or confirm_conflicts=True: Success confirmation with request ID
-        - Error if validation fails (insufficient balance, invalid dates, etc.)
+        - If no conflicts or confirm_conflicts=True: Success with request ID
+        - Error if validation fails
     """
-    # CRITICAL: Block if user hasn't confirmed (unless just checking for conflicts)
-    if not user_confirmed and not confirm_conflicts:
-        # Calculate duration for the summary
-        try:
-            start = datetime.strptime(start_date, "%Y-%m-%d").date()
-            end = datetime.strptime(end_date, "%Y-%m-%d").date()
-            duration = (end - start).days + 1
-        except ValueError:
-            duration = "?"
-
-        return f"""🛑 STOP! You must get user confirmation first!
-
-Please show this summary to the user and ask for confirmation:
-
-📋 **Leave Request Summary:**
-┌────────────────────────────────┐
-│ Type:       {leave_type.title()} Leave
-│ From:       {start_date}
-│ To:         {end_date}
-│ Duration:   {duration} day(s)
-└────────────────────────────────┘
-
-⚠️ IMPORTANT: Also show the balance impact:
-"You have X days of {leave_type} leave. This will use {duration} days, leaving you with Y days."
-
-"Do you want to submit this request? (Yes/No)"
-"هل تريد تقديم هذا الطلب؟ (نعم/لا)"
-
-ONLY call submit_leave_request with user_confirmed=True after user says "yes" or "نعم".
-"""
     with get_db_session() as db:
         service = HRService(db)
         try:
@@ -228,6 +256,7 @@ ONLY call submit_leave_request with user_confirmed=True after user says "yes" or
         if end < start:
             return f"Error: End date {end_date} cannot be before start date {start_date}. Please ask the user for correct dates."
 
+        # Submit the request - the service handles conflict checking
         result = service.submit_leave_request(
             employee_id, leave_type, start, end, reason, confirm_conflicts
         )
@@ -269,26 +298,12 @@ def create_excuse(
     excuse_type: str,
     reason: str,
     start_time: Optional[str] = None,
-    end_time: Optional[str] = None,
-    user_confirmed: bool = False
+    end_time: Optional[str] = None
 ) -> str:
     """
     Create an excuse request for late arrival or early departure.
 
-    ⚠️ CRITICAL: DO NOT call this tool until you have:
-    1. Gathered ALL required information from the user
-    2. Shown a summary to the user
-    3. Received EXPLICIT confirmation ("yes", "نعم", "تمام", "أكيد")
-    4. Set user_confirmed=True ONLY after receiving explicit confirmation!
-
-    🛑 MANDATORY CONFIRMATION FLOW:
-    1. Show summary: "Here's your excuse request: Date: X, Type: Y, Time: Z, Reason: W. Do you want to submit?"
-    2. Wait for user to say "yes" / "نعم" / "تمام" / "confirm"
-    3. ONLY THEN call this function with user_confirmed=True
-
-    If user says "no", "لا", "cancel" → DO NOT call this function!
-
-    Required information:
+    ⚠️ CRITICAL: DO NOT call this tool until you have gathered ALL required information:
     - excuse_date: If user didn't specify, use TODAY's date from context
     - excuse_type: "late_arrival" or "early_departure"
     - reason: MUST be provided by user - ASK if missing!
@@ -297,7 +312,6 @@ def create_excuse(
       DO NOT round, normalize, or modify the time. Pass it exactly as the user said it.
     - end_time (for early_departure): MUST be provided - ASK "What time did you leave?"
       ⚠️ CRITICAL: Use the EXACT time the user provided. DO NOT round or modify it.
-    - user_confirmed: MUST be True - only set this after user explicitly confirms!
 
     Args:
         employee_id: The employee ID (e.g., "EMP001")
@@ -306,115 +320,60 @@ def create_excuse(
         reason: Reason for the excuse (REQUIRED - ask user if not provided!)
         start_time: For late arrival, the EXACT arrival time as provided by user (supports "8:17", "08:17", "8.17" formats) - REQUIRED for late_arrival
         end_time: For early departure, the EXACT departure time as provided by user (supports "15:00", "3:00", "15.00" formats) - REQUIRED for early_departure
-        user_confirmed: Set to True ONLY after user explicitly confirms the summary. Default is False.
 
     Returns:
         Success confirmation with excuse ID.
     """
-    # CRITICAL: Block if user hasn't confirmed
-    if not user_confirmed:
-        return """🛑 STOP! You must get user confirmation first!
-
-Please show this summary to the user and ask for confirmation:
-
-📋 **Excuse Request Summary:**
-┌────────────────────────────────┐
-│ Date:    [excuse_date]         │
-│ Type:    [excuse_type]         │
-│ Time:    [time]                │
-│ Reason:  [reason]              │
-└────────────────────────────────┘
-
-"Do you want to submit this excuse? (Yes/No)"
-"هل تريد تقديم هذا الاستئذان؟ (نعم/لا)"
-
-ONLY call create_excuse with user_confirmed=True after user says "yes" or "نعم".
-"""
-    # VALIDATION: Block if required info is missing
-    if not reason or reason.strip() == "":
-        return """❌ لا يمكن تسجيل الاستئذان بدون سبب!
-        
-من فضلك اسأل المستخدم:
-"ما سبب التأخير/المغادرة المبكرة؟ (مثال: زحمة، موعد طبي، ظرف عائلي)"
-
-❌ Cannot submit excuse without a reason!
-Please ask the user: "What was the reason for being late/leaving early?"
-"""
-
-    # VALIDATION: Block generic/hallucinated reasons
-    generic_reasons = [
-        "late", "late arrival", "delayed", "coming late", "traffic", "unspecified", 
-        "reason", "excuse", "تأخر", "تأخير", "زحمة", "بدون سبب", "سبب", "متاخر",
-        "نسيت", "forgot", "forgot to submit", "نسيت اقدم", "نسيت اقدم طلب",
-        "i forgot", "i was late", "كان متأخر", "تأخرت"
-    ]
-    
-    reason_lower = reason.lower().strip()
-    
-    # Block if reason is too generic or just describes the action
-    if reason_lower in generic_reasons:
-        return """❌ السبب المقدم غير كافٍ. يرجى طلب سبب محدد من المستخدم.
-
-من فضلك اسأل المستخدم:
-"ما هو السبب المحدد للتأخير/المغادرة المبكرة؟ (مثال: زحمة مرورية على الطريق السريع، موعد طبي، ظرف عائلي طارئ)"
-
-❌ The provided reason is insufficient. Please ask the user for a specific reason.
-
-Please ask: "What was the specific reason for being late/leaving early? (e.g., traffic jam on the highway, medical appointment, family emergency)"
-"""
-    
-    # Block if reason is too short (less than 5 characters) or just one word
-    if len(reason.strip()) < 5 or len(reason.split()) < 2:
-        return """❌ يرجى طلب سبب أكثر تفصيلاً من المستخدم.
-
-من فضلك اسأل المستخدم:
-"ما هو السبب المحدد للتأخير/المغادرة المبكرة؟"
-
-❌ Please ask the user for a more detailed reason.
-
-Please ask: "What was the specific reason for being late/leaving early?"
-"""
-
-    # VALIDATION: Check for suspicious times (LLM hallucination of duration as time)
-    # Example: User says "30 mins late", LLM sends "00:30". This must be blocked.
-    suspicious_time = False
-    time_val = start_time if excuse_type == "late_arrival" else end_time
-    
-    if time_val:
-        try:
-            h = int(time_val.split(':')[0])
-            if 0 <= h < 6:  # Block times between 00:00 and 05:59
-                suspicious_time = True
-        except:
-            pass
-            
-    if suspicious_time:
-        return f"""❌ Error: Time '{time_val}' looks suspicious (too early). 
-Did the user say a duration (e.g. "30 mins") and you interpreted it as a time?
-
-You MUST ASK the user for the specific CLOCK TIME.
-Example: "You said you were late 30 mins. What time did you actually arrive?"
-"""
-
+    # ============================================
+    # VALIDATION 1: TIME IS MANDATORY - CHECK FIRST!
+    # ============================================
     if excuse_type == "late_arrival" and not start_time:
-        return """❌ لا يمكن تسجيل استئذان التأخر بدون وقت الوصول!
-
-من فضلك اسأل المستخدم:
-"كم كانت الساعة عند وصولك؟ (مثال: 8:30)"
-
-❌ Cannot submit late arrival excuse without arrival time!
-Please ask: "What time did you arrive?"
-"""
+        return """{"error": "missing_arrival_time", "message_ar": "لا يمكن تسجيل استئذان التأخر بدون وقت الوصول! اسأل المستخدم: كم كانت الساعة عند وصولك؟", "message": "Cannot submit late arrival excuse without arrival time! Ask the user: What time did you arrive? (e.g., 8:30)"}"""
 
     if excuse_type == "early_departure" and not end_time:
-        return """❌ لا يمكن تسجيل استئذان المغادرة المبكرة بدون وقت المغادرة!
+        return """{"error": "missing_departure_time", "message_ar": "لا يمكن تسجيل استئذان المغادرة المبكرة بدون وقت المغادرة! اسأل المستخدم: كم كانت الساعة عند مغادرتك؟", "message": "Cannot submit early departure excuse without departure time! Ask the user: What time did you leave? (e.g., 15:00)"}"""
 
-من فضلك اسأل المستخدم:
-"كم كانت الساعة عند مغادرتك؟ (مثال: 15:00)"
+    # ============================================
+    # VALIDATION 2: REASON IS MANDATORY
+    # ============================================
+    if not reason or reason.strip() == "":
+        return """{"error": "missing_reason", "message_ar": "لا يمكن تسجيل الاستئذان بدون سبب! اسأل المستخدم: ما سبب التأخير/المغادرة المبكرة؟", "message": "Cannot submit excuse without a reason! Ask the user: What was the reason for being late/leaving early?"}"""
 
-❌ Cannot submit early departure excuse without departure time!
-Please ask: "What time did you leave?"
-"""
+    # ============================================
+    # VALIDATION 3: BLOCK GENERIC/HALLUCINATED REASONS
+    # ============================================
+    generic_reasons = [
+        "late", "late arrival", "delayed", "coming late", "traffic", "unspecified",
+        "reason", "excuse", "personal", "personal reason", "personal reasons",
+        "sick", "not feeling well", "unwell",
+        # Arabic generic reasons
+        "تأخر", "تأخير", "زحمة", "بدون سبب", "سبب", "متاخر", "شخصي", "ظروف",
+        "نسيت", "forgot", "forgot to submit", "نسيت اقدم", "نسيت اقدم طلب",
+        "i forgot", "i was late", "كان متأخر", "تأخرت", "مريض", "تعبان"
+    ]
+
+    reason_lower = reason.lower().strip()
+
+    if reason_lower in generic_reasons:
+        return """{"error": "generic_reason", "message_ar": "السبب المقدم غير كافٍ. اسأل المستخدم: ما هو السبب المحدد؟ (مثال: زحمة مرورية على الطريق السريع، موعد طبي، ظرف عائلي طارئ)", "message": "The provided reason is too generic. Ask the user: What was the specific reason? (e.g., traffic jam on highway, medical appointment, family emergency)"}"""
+
+    # Block if reason is too short (less than 8 characters) or just one/two words
+    if len(reason.strip()) < 8 or len(reason.split()) < 2:
+        return """{"error": "reason_too_short", "message_ar": "يرجى طلب سبب أكثر تفصيلاً من المستخدم.", "message": "Please ask the user for a more detailed reason."}"""
+
+    # ============================================
+    # VALIDATION 4: CHECK FOR SUSPICIOUS TIMES
+    # ============================================
+    time_val = start_time if excuse_type == "late_arrival" else end_time
+
+    if time_val:
+        try:
+            h = int(time_val.split(':')[0].replace('.', ':').split(':')[0])
+            # Block times between 00:00 and 05:59 (suspicious - probably hallucinated)
+            if 0 <= h < 6:
+                return f"""{{"error": "suspicious_time", "message": "Time '{time_val}' looks suspicious (too early). Did the user say a duration? Ask for the actual clock time.", "message_ar": "الوقت '{time_val}' يبدو غير صحيح. اسأل المستخدم عن الوقت الفعلي."}}"""
+        except:
+            pass
 
     with get_db_session() as db:
         service = HRService(db)
@@ -508,6 +467,8 @@ def get_hr_tools() -> list:
         FunctionTool.from_defaults(fn=get_payslip),
         FunctionTool.from_defaults(fn=get_ticket_status),
         FunctionTool.from_defaults(fn=check_duplicate_excuse),
+        # Utility tools
+        FunctionTool.from_defaults(fn=handle_cancel_request),
         # Write tools
         FunctionTool.from_defaults(fn=submit_leave_request),
         FunctionTool.from_defaults(fn=create_excuse),

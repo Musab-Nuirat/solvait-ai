@@ -8,6 +8,7 @@ from app.agent.custom_llm import GoogleGenaiLLM
 
 from app.config import GOOGLE_API_KEY, LLM_MODEL, DEBUG_MODE
 from app.agent.prompts import SYSTEM_PROMPT
+from app.agent.intent_router import get_intent_router, get_tool_interceptor
 from app.mcp.tools import get_hr_tools
 from app.rag.policy_engine import get_policy_engine
 from app.utils.tracer import get_tracer, Tracer
@@ -108,6 +109,54 @@ class HRAgent:
         tracer = get_tracer(reset=True)
         tracer.log_query(message)
 
+        # PRE-PROCESSING: Handle special commands before agent
+        message_lower = message.lower().strip()
+
+        # Cancel keywords
+        cancel_keywords = ["cancel", "stop", "abort", "never mind", "nevermind",
+                          "إلغاء", "توقف", "لا أريد", "خلاص", "الغاء", "كنسل"]
+
+        if any(keyword in message_lower for keyword in cancel_keywords):
+            is_arabic = any(ord(c) > 127 for c in message)
+            if is_arabic:
+                response = "لا مشكلة! تم إلغاء الطلب. كيف يمكنني مساعدتك؟"
+            else:
+                response = "No problem! The request has been cancelled. How else can I help you?"
+            tracer.log("CANCEL", "User cancelled current operation")
+            output = {"response": response}
+            if return_traces:
+                output["traces"] = tracer.get_traces()
+            return output
+
+        # Confirmation keywords - check if previous message was asking for confirmation
+        confirm_keywords = ["yes", "yeah", "yep", "ok", "okay", "sure", "proceed", "submit", "confirm",
+                           "نعم", "اه", "ايوه", "اي", "تمام", "موافق", "اوك", "اكيد", "بدي", "ماشي"]
+
+        # Check if this looks like a confirmation response
+        if chat_history and len(chat_history) > 0:
+            last_assistant_msg = ""
+            for msg in reversed(chat_history):
+                if msg.get("role") == "assistant":
+                    last_assistant_msg = msg.get("content", "").lower()
+                    break
+
+            # If last message asked for confirmation and user is confirming
+            confirmation_phrases = ["yes/no", "نعم/لا", "do you want to submit", "هل تريد تقديم",
+                                   "do you want to proceed", "هل تريد المتابعة"]
+
+            is_asking_confirmation = any(phrase in last_assistant_msg for phrase in confirmation_phrases)
+            is_user_confirming = any(kw in message_lower for kw in confirm_keywords)
+
+            if is_asking_confirmation and is_user_confirming:
+                # Inject confirmation context into the message
+                tracer.log("CONFIRM", "User confirmed previous request")
+                message = f"[USER CONFIRMED: The user said '{message}' to confirm the previous request. PROCEED with the submission NOW. Do NOT ask for confirmation again.]"
+
+        # INTENT DETECTION: Route to intent-specific prompt
+        intent_router = get_intent_router()
+        detected_intent, intent_prompt = intent_router.detect_intent(message, chat_history)
+        tracer.log("INTENT", f"Detected intent: {detected_intent}")
+
         try:
             # Build chat history for context
             history_messages = []
@@ -149,21 +198,53 @@ class HRAgent:
 """
             augmented_message = context_prefix + message
 
-            tracer.log_llm("ReActAgent", "Starting reasoning loop")
+            tracer.log_llm("ReActAgent", f"Starting reasoning loop (intent: {detected_intent})")
+
+            # Build intent-aware system prompt
+            intent_system_prompt = f"""## CURRENT TASK: {detected_intent.upper().replace('_', ' ')}
+{intent_prompt}
+
+---
+
+""" + self._build_system_prompt()
+
+            # Create a new agent with intent-specific prompt for this request
+            intent_agent = ReActAgent(
+                tools=self.tools,
+                llm=self.llm,
+                system_prompt=intent_system_prompt,
+                verbose=True,
+                streaming=False,
+            )
 
             # Run agent with chat history
-            handler = self.agent.run(
+            handler = intent_agent.run(
                 user_msg=augmented_message,
                 chat_history=history_messages if history_messages else None
             )
             result = await handler
 
             # Log tool calls if any
+            tool_names_called = []
             if result.tool_calls:
                 for tc in result.tool_calls:
                     tracer.log_tool_call(tc.tool_name, {"args": str(tc.tool_kwargs)[:200]})
+                    tool_names_called.append(tc.tool_name)
 
             response_content = result.response.content
+
+            # POST-PROCESSING: Enforce mandatory follow-ups
+            tool_interceptor = get_tool_interceptor()
+            is_arabic = any(ord(c) > 127 for c in message)
+
+            for tool_name in tool_names_called:
+                intercepted = tool_interceptor.intercept(tool_name, "", is_arabic)
+                if intercepted.get("mandatory_followup"):
+                    response_content = tool_interceptor.enforce_followup(
+                        response_content,
+                        intercepted["mandatory_followup"]
+                    )
+
             tracer.log_response(response_content)
 
             output = {"response": response_content}
