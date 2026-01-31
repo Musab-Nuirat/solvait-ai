@@ -303,6 +303,35 @@ class HRService:
             }
         }
     
+    def check_duplicate_excuse(
+        self,
+        employee_id: str,
+        excuse_date: date,
+        excuse_type: str
+    ) -> Dict[str, Any]:
+        """Check if a similar excuse already exists for the same date and type."""
+        try:
+            et = ExcuseType(excuse_type.lower())
+        except ValueError:
+            return {"exists": False}
+
+        existing = self.db.query(Excuse).filter(
+            Excuse.employee_id == employee_id,
+            Excuse.date == excuse_date,
+            Excuse.excuse_type == et
+        ).first()
+
+        if existing:
+            return {
+                "exists": True,
+                "excuse_id": f"EX-{existing.id:04d}",
+                "date": excuse_date.isoformat(),
+                "type": excuse_type,
+                "reason": existing.reason,
+                "status": existing.status.value
+            }
+        return {"exists": False}
+
     def create_excuse(
         self,
         employee_id: str,
@@ -313,7 +342,17 @@ class HRService:
         reason: str = ""
     ) -> Dict[str, Any]:
         """Create an excuse request for late arrival or early departure."""
-        
+
+        # Check for duplicate excuse first
+        duplicate_check = self.check_duplicate_excuse(employee_id, excuse_date, excuse_type)
+        if duplicate_check.get("exists"):
+            return {
+                "error": "duplicate_excuse",
+                "message": f"An excuse for {excuse_type.replace('_', ' ')} on {excuse_date} already exists (ID: {duplicate_check['excuse_id']}). Status: {duplicate_check['status']}.",
+                "message_ar": f"يوجد استئذان مسجل مسبقاً لنفس اليوم والنوع (رقم: {duplicate_check['excuse_id']}). الحالة: {duplicate_check['status']}.",
+                "existing_excuse": duplicate_check
+            }
+
         # Validate reason is provided
         if not reason or not reason.strip():
             return {"error": "Reason is required for excuse requests"}

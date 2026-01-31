@@ -479,54 +479,33 @@ for message in st.session_state.messages:
         if debug_mode and message.get("traces"):
             render_traces(message["traces"])
 
-# Handle quick action messages
+# Handle quick action messages - use flag to track pending message
 if "quick_message" in st.session_state:
     quick_msg = st.session_state.pop("quick_message")
-    st.session_state.messages.append({"role": "user", "content": quick_msg, "traces": []})
+    st.session_state.pending_message = quick_msg
 
+# Handle pending message (from quick action or previous submit)
+if "pending_message" in st.session_state:
+    pending_msg = st.session_state.pop("pending_message")
+
+    # Add user message to history
+    st.session_state.messages.append({"role": "user", "content": pending_msg, "traces": []})
+
+    # Display the user message
     with st.chat_message("user"):
-        st.markdown(f'<div class="rtl-text">{quick_msg}</div>', unsafe_allow_html=True)
-
-    with st.chat_message("assistant"):
-        with st.spinner("🤔 Thinking..."):
-            # Pass chat history for context
-            response, traces = send_message(
-                selected_employee_id,
-                quick_msg,
-                chat_history=st.session_state.messages[:-1],  # Exclude the just-added user message
-                include_traces=debug_mode
-            )
-
-        if is_arabic(response):
-            st.markdown(f'<div class="rtl-text">{response}</div>', unsafe_allow_html=True)
+        if is_arabic(pending_msg):
+            st.markdown(f'<div class="rtl-text">{pending_msg}</div>', unsafe_allow_html=True)
         else:
-            st.markdown(response)
-
-        if debug_mode and traces:
-            render_traces(traces)
-
-    st.session_state.messages.append({"role": "assistant", "content": response, "traces": traces})
-    st.rerun()
-
-# Chat input
-if prompt := st.chat_input("Type your message..."):
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt, "traces": []})
-
-    with st.chat_message("user"):
-        if is_arabic(prompt):
-            st.markdown(f'<div class="rtl-text">{prompt}</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(prompt)
+            st.markdown(pending_msg)
 
     # Get and display assistant response
     with st.chat_message("assistant"):
-        with st.spinner("🤔 Thinking..."):
-            # Pass chat history for context
+        with st.spinner("🤔 جارٍ التفكير... / Thinking..."):
+            # Pass chat history for context (exclude current user message)
             response, traces = send_message(
                 selected_employee_id,
-                prompt,
-                chat_history=st.session_state.messages[:-1],  # Exclude the just-added user message
+                pending_msg,
+                chat_history=st.session_state.messages[:-1],
                 include_traces=debug_mode
             )
 
@@ -538,7 +517,17 @@ if prompt := st.chat_input("Type your message..."):
         if debug_mode and traces:
             render_traces(traces)
 
+    # Add assistant response to history
     st.session_state.messages.append({"role": "assistant", "content": response, "traces": traces})
+
+    # Rerun to ensure clean state and prevent duplication
+    st.rerun()
+
+# Chat input - use experimental_rerun to prevent double display
+if prompt := st.chat_input("Type your message... / اكتب رسالتك..."):
+    # Set pending message and rerun to handle it cleanly
+    st.session_state.pending_message = prompt
+    st.rerun()
 
 
 # ============================================
