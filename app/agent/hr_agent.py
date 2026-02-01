@@ -157,6 +157,33 @@ class HRAgent:
         detected_intent, intent_prompt = intent_router.detect_intent(message, chat_history)
         tracer.log("INTENT", f"Detected intent: {detected_intent}")
 
+        # PRE-PROCESSING: Payslip without month - return immediately with question
+        if detected_intent == "payslip":
+            payslip_keywords = ["payslip", "salary", "راتب", "قسيمة", "كشف راتب", "pay slip", "كشف الراتب", "رواتب", "معاش"]
+            latest_keywords = ["latest", "الأخير", "most recent", "الأحدث", "last", "الاخير", "اخر", "آخر"]
+            month_keywords = ["january", "february", "march", "april", "may", "june", "july",
+                              "august", "september", "october", "november", "december",
+                              "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+                              "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
+                              "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+            is_payslip_request = any(kw in message_lower for kw in payslip_keywords)
+            has_latest = any(kw in message_lower for kw in latest_keywords)
+            has_month = any(kw in message_lower for kw in month_keywords)
+
+            if is_payslip_request and not has_latest and not has_month:
+                # Return immediately with question - don't let LLM infer "latest"
+                is_arabic = any(ord(c) > 127 for c in message)
+                if is_arabic:
+                    response = "أي شهر تريد عرضه؟ (مثال: يناير 2026، أو 'الأخير' للشهر الأحدث)"
+                else:
+                    response = "Which month would you like to view? (e.g., January 2026, or 'latest' for the most recent)"
+                tracer.log("PAYSLIP_ASK_MONTH", "No month specified, asking user")
+                output = {"response": response}
+                if return_traces:
+                    output["traces"] = tracer.get_traces()
+                return output
+
         try:
             # Build chat history for context
             history_messages = []

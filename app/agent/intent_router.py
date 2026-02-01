@@ -15,32 +15,67 @@ class IntentRouter:
         "leave_balance": """You are checking leave balance.
 RULES:
 1. Call get_leave_balance tool
-2. Display balances clearly
+2. Display balances in a clear structured format
 3. MANDATORY: End with "Would you like me to help you request a new leave now?" (or Arabic equivalent)
 4. DO NOT skip the follow-up question!""",
 
         "leave_request": """You are processing a leave request.
 RULES:
 1. Gather: leave type, start date, end date (ASK if missing)
-2. Call get_leave_balance to check and INFORM user of balance impact
-3. Call submit_leave_request - if conflict warning, inform user and ask to proceed
-4. After submission, show confirmation with request ID
-5. If user cancels, acknowledge cancellation""",
+2. STEP 1 - PREVIEW: Call submit_leave_request with user_confirmed="no"
+   - This returns a PREVIEW (not actual submission!)
+   - Display the summary to user including balance impact
+   - ASK: "Do you want to submit this request? (Yes/No)"
+   - STOP AND WAIT for user response!
+3. STEP 2 - SUBMIT: Only after user says yes/نعم/تمام, call submit_leave_request with user_confirmed="yes"
+4. If conflict warning, inform user and ask to proceed
+5. After submission, show remaining balance from the response
+6. If user cancels, acknowledge cancellation
+
+CRITICAL: First call must have user_confirmed="no" to get preview. Only set user_confirmed="yes" after user confirms!""",
 
         "payslip": """You are showing a payslip.
-RULES:
-1. Call get_payslip tool
-2. Display ALL breakdown items (basic, each allowance, each deduction)
-3. MANDATORY: End with "Download option coming soon!"
-4. DO NOT summarize - show full details""",
+RULES - FOLLOW EXACTLY:
+1. CRITICAL - Check if user's message contains keywords:
+   - Latest keywords: "latest", "الأخير", "most recent", "الأحدث", "last"
+   - Month names: January, February, March, April, May, June, July, August, September, October, November, December
+   - Month names Arabic: يناير, فبراير, مارس, أبريل, مايو, يونيو, يوليو, أغسطس, سبتمبر, أكتوبر, نوفمبر, ديسمبر
+
+2. IF USER MESSAGE HAS NO MONTH AND NO "LATEST" KEYWORD:
+   - DO NOT call any payslip tool!
+   - ASK: "Which month would you like to view? (e.g., January 2026, or 'latest' for most recent)"
+   - STOP AND WAIT!
+
+3. IF USER MESSAGE CONTAINS "LATEST" OR "الأخير":
+   - Call get_latest_payslip (NOT get_payslip!)
+
+4. IF USER MESSAGE CONTAINS A MONTH NAME:
+   - Call get_payslip with month=<number>
+
+5. Display ALL breakdown items
+6. End with "Download option coming soon!" """,
 
         "excuse": """You are creating an excuse request.
-RULES:
-1. For late_arrival: MUST have arrival time - ASK if missing
-2. For early_departure: MUST have departure time - ASK if missing
-3. MUST have specific reason - ASK if missing (generic reasons not accepted)
-4. After collecting ALL info, create the excuse
-5. If user cancels, acknowledge cancellation""",
+RULES - FOLLOW EXACTLY:
+1. Determine type: late_arrival OR early_departure
+2. COLLECT ALL REQUIRED INFO BEFORE PROCEEDING:
+   - For late_arrival: ASK "What time did you arrive?" (e.g., 8:30 AM)
+   - For early_departure: ASK "What time did you leave?" (e.g., 3:00 PM)
+   - MUST have SPECIFIC reason - ASK "What was the specific reason?" (generic like "traffic" alone is NOT accepted, need details like "traffic jam on highway due to accident")
+3. DO NOT call create_excuse until you have ALL: type, time, AND detailed reason
+4. TIME FORMAT: Accept AM/PM (e.g., "8:30 AM", "3pm") and 24-hour (e.g., "08:30", "15:00")
+5. MANDATORY CONFIRMATION: After collecting all info, show summary:
+   ```
+   Excuse Request Summary:
+   - Date: [date]
+   - Type: Late Arrival / Early Departure
+   - Time: [time]
+   - Reason: [reason]
+
+   Do you want to submit this excuse? (Yes/No)
+   ```
+6. WAIT for explicit "yes" or "نعم" before calling create_excuse
+7. If user cancels, acknowledge cancellation""",
 
         "policy": """You are answering an HR policy question.
 RULES:
@@ -117,15 +152,6 @@ RULES:
         if any(kw in message_lower for kw in self.INTENT_KEYWORDS["cancel"]):
             return "cancel", self.INTENT_PROMPTS["cancel"]
 
-        # Check for confirmation response (if in middle of a flow)
-        if chat_history:
-            confirm_keywords = ["yes", "yeah", "ok", "sure", "نعم", "اه", "تمام", "موافق", "بدي"]
-            if any(kw in message_lower for kw in confirm_keywords):
-                # Check what we were doing before
-                last_intent = self._get_last_intent(chat_history)
-                if last_intent in ["leave_request", "excuse"]:
-                    return last_intent, self.INTENT_PROMPTS[last_intent]
-
         # Score each intent based on keyword matches
         scores = {}
         for intent, keywords in self.INTENT_KEYWORDS.items():
@@ -133,10 +159,47 @@ RULES:
             if score > 0:
                 scores[intent] = score
 
+        # Get current intent from message
+        current_intent = max(scores, key=scores.get) if scores else None
+
+        # Check for confirmation response (if in middle of a flow)
+        if chat_history:
+            confirm_keywords = ["yes", "yeah", "ok", "sure", "نعم", "اه", "تمام", "موافق", "بدي", "اكيد", "ايوه"]
+
+            # Only treat as confirmation if NO other intent keywords detected
+            if not current_intent and any(kw in message_lower for kw in confirm_keywords):
+                # Check what we were doing before
+                last_intent = self._get_last_intent(chat_history)
+                if last_intent in ["leave_request", "excuse"]:
+                    return last_intent, self.INTENT_PROMPTS[last_intent]
+
         # Return highest scoring intent
-        if scores:
-            best_intent = max(scores, key=scores.get)
-            return best_intent, self.INTENT_PROMPTS[best_intent]
+        if current_intent:
+            prompt = self.INTENT_PROMPTS[current_intent]
+
+            # Check if this is an INTENT CHANGE (different from previous)
+            prev_intent = self._get_last_intent(chat_history) if chat_history else None
+            if prev_intent and current_intent != prev_intent:
+                # Intent changed - add isolation instruction to prompt
+                isolation_note = f"\n\n## INTENT CHANGE DETECTED\nPrevious flow was: {prev_intent}. User is now asking about: {current_intent}.\nSTART FRESH - do NOT use any data from the previous flow."
+                prompt += isolation_note
+
+            # PAYSLIP SPECIAL CHECK: If payslip intent but no month/latest in message
+            if current_intent == "payslip":
+                latest_keywords = ["latest", "الأخير", "most recent", "الأحدث", "last", "الاخير"]
+                month_keywords = ["january", "february", "march", "april", "may", "june", "july",
+                                  "august", "september", "october", "november", "december",
+                                  "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+                                  "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
+                                  "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+                has_latest = any(kw in message_lower for kw in latest_keywords)
+                has_month = any(kw in message_lower for kw in month_keywords)
+
+                if not has_latest and not has_month:
+                    prompt += "\n\n## USER DID NOT SPECIFY MONTH\nThe user's message does NOT contain 'latest' or a month name.\nYOU MUST ASK which month they want to view. DO NOT call get_payslip with get_latest='yes'!"
+
+            return current_intent, prompt
 
         # Default to general
         return "general", self.INTENT_PROMPTS["general"]

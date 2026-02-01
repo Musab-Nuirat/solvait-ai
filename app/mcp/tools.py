@@ -111,15 +111,18 @@ def get_team_calendar(department: str, start_date: str, end_date: str) -> str:
         return str(result)
 
 
-def get_payslip(employee_id: str, month: Optional[int] = None, year: Optional[int] = None, user_said_latest: bool = False) -> str:
+def get_payslip(employee_id: str, month: int, year: Optional[int] = None) -> str:
     """
-    Get the payslip for an employee.
+    Get the payslip for a SPECIFIC month.
+
+    IMPORTANT: Only call this if user specified which month they want!
+    If user said "show my payslip" without a month, ask them first.
+    If user said "latest", use get_latest_payslip instead.
 
     Args:
         employee_id: The employee ID (e.g., "EMP001")
-        month: Month number (1-12). Leave empty to get latest.
-        year: Year (e.g., 2024).
-        user_said_latest: Set True if user said "latest" or "الأخير".
+        month: Month number (1-12). REQUIRED.
+        year: Year (e.g., 2026). Defaults to current year.
 
     Returns:
         Payslip with full breakdown and download note.
@@ -156,7 +159,66 @@ def get_payslip(employee_id: str, month: Optional[int] = None, year: Optional[in
             lines.append("")
             lines.append(f"**Net Salary: SAR {net:,.0f}**")
             lines.append("")
-            lines.append("Download option coming soon!")
+            # Add download link
+            download_url = p.get("download_url", "")
+            if download_url:
+                lines.append(f"[Download PDF]({download_url})")
+
+            return "\n".join(lines)
+
+        return str(result)
+
+
+def get_latest_payslip(employee_id: str) -> str:
+    """
+    Get the LATEST/most recent payslip for an employee.
+
+    IMPORTANT: Only call this if user explicitly said "latest", "الأخير", "most recent", "الأحدث".
+    If user did not specify, ask: "Which month would you like to view?"
+
+    Args:
+        employee_id: The employee ID (e.g., "EMP001")
+
+    Returns:
+        Latest payslip with full breakdown and download note.
+    """
+    with get_db_session() as db:
+        service = HRService(db)
+        # Get latest payslip (no month/year means latest)
+        result = service.get_payslip(employee_id, None, None)
+
+        if isinstance(result, dict) and not result.get("error"):
+            # Build formatted payslip response
+            p = result
+            period = p.get("period_display", p.get("period", ""))
+            basic = p.get("basic_salary", 0)
+            net = p.get("net_salary", 0)
+            allowances = p.get("allowances", {})
+            deductions = p.get("deductions", {})
+
+            lines = [f"**Payslip for {period}:**", ""]
+            lines.append(f"Basic Salary: SAR {basic:,.0f}")
+            lines.append("")
+            lines.append("**Allowances:**")
+            lines.append(f"- Housing: SAR {allowances.get('housing_allowance', 0):,.0f}")
+            lines.append(f"- Transport: SAR {allowances.get('transport_allowance', 0):,.0f}")
+            lines.append(f"- Phone: SAR {allowances.get('phone_allowance', 0):,.0f}")
+            lines.append(f"- Meal: SAR {allowances.get('meal_allowance', 0):,.0f}")
+            lines.append(f"- Other: SAR {allowances.get('other_allowances', 0):,.0f}")
+            lines.append(f"- **Total Allowances: SAR {allowances.get('total', 0):,.0f}**")
+            lines.append("")
+            lines.append("**Deductions:**")
+            lines.append(f"- GOSI: SAR {deductions.get('gosi_deduction', 0):,.0f}")
+            lines.append(f"- Tax: SAR {deductions.get('tax_deduction', 0):,.0f}")
+            lines.append(f"- Loan: SAR {deductions.get('loan_deduction', 0):,.0f}")
+            lines.append(f"- **Total Deductions: SAR {deductions.get('total', 0):,.0f}**")
+            lines.append("")
+            lines.append(f"**Net Salary: SAR {net:,.0f}**")
+            lines.append("")
+            # Add download link
+            download_url = p.get("download_url", "")
+            if download_url:
+                lines.append(f"[Download PDF]({download_url})")
 
             return "\n".join(lines)
 
@@ -216,17 +278,15 @@ def submit_leave_request(
     start_date: str,
     end_date: str,
     reason: Optional[str] = None,
-    confirm_conflicts: bool = False
+    confirm_conflicts: bool = False,
+    user_confirmed: str = "no"
 ) -> str:
     """
     Submit a new leave request for an employee.
 
-    ⚠️ CONFLICT HANDLING:
-    - First call with confirm_conflicts=False (default) - checks for team conflicts
-    - If result contains "warning": "team_conflict":
-      * Tell the user about conflicting team members
-      * Ask if they want to proceed anyway
-    - If user confirms, call again with confirm_conflicts=True
+    ⚠️ TWO-STEP PROCESS:
+    1. First call with user_confirmed="no" (or not set) -> Returns a PREVIEW/SUMMARY
+    2. After user says "yes"/"نعم", call again with user_confirmed="yes" -> Actually submits
 
     Args:
         employee_id: The employee ID (e.g., "EMP001")
@@ -234,13 +294,80 @@ def submit_leave_request(
         start_date: Start date in YYYY-MM-DD format
         end_date: End date in YYYY-MM-DD format
         reason: Optional reason for the leave
-        confirm_conflicts: Set to True ONLY after user confirms despite team conflicts
+        confirm_conflicts: Set to True if user confirmed despite team conflicts
+        user_confirmed: MUST be "yes" to actually submit. If "no", returns preview only.
 
     Returns:
-        - If conflicts exist and confirm_conflicts=False: Warning with conflict details
-        - If no conflicts or confirm_conflicts=True: Success with request ID
-        - Error if validation fails
+        - If user_confirmed="no": Preview with balance info and confirmation prompt
+        - If user_confirmed="yes": Success with request ID and remaining balance
     """
+    # Parse dates first for validation and preview
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    except ValueError:
+        return "Error: Invalid date format. Please use YYYY-MM-DD."
+
+    # Validate dates
+    today = date.today()
+    if start < today:
+        return f"Error: Cannot submit leave for past dates. Start date {start_date} is before today ({today})."
+    if end < start:
+        return f"Error: End date {end_date} cannot be before start date {start_date}."
+
+    # Calculate days
+    requested_days = (end - start).days + 1
+
+    # Map leave type synonyms (medical -> sick)
+    leave_type_mapping = {
+        "annual": "annual",
+        "sick": "sick",
+        "unpaid": "unpaid",
+        "medical": "sick",
+        "مرضية": "sick",
+        "سنوية": "annual",
+        "بدون راتب": "unpaid",
+    }
+    normalized_type = leave_type_mapping.get(leave_type.lower(), leave_type.lower())
+
+    # If not confirmed, return a preview
+    if user_confirmed.lower() != "yes":
+        with get_db_session() as db:
+            service = HRService(db)
+            # Get current balance for preview using normalized type
+            balance_result = service.get_leave_balance(employee_id, normalized_type)
+            current_balance = 0
+            if "balances" in balance_result:
+                for b in balance_result.get("balances", []):
+                    if b["type"] == normalized_type:
+                        current_balance = b["remaining_days"]
+                        break
+
+            remaining_after = current_balance - requested_days if normalized_type != "unpaid" else "N/A"
+
+            # Display leave type - show as "sick (medical)" if they asked for medical
+            display_type = f"sick ({leave_type})" if leave_type.lower() == "medical" else leave_type
+
+            preview = {
+                "preview": True,
+                "not_submitted_yet": True,
+                "leave_type": normalized_type,
+                "original_type": leave_type,
+                "start_date": start_date,
+                "end_date": end_date,
+                "days": requested_days,
+                "current_balance": current_balance,
+                "remaining_after": remaining_after,
+                "message": f"PREVIEW - Leave Request Summary: {display_type.title()} leave from {start_date} to {end_date} ({requested_days} days). Current balance: {current_balance} days. After approval: {remaining_after} days.",
+                "action_required": "SHOW THIS TO USER AND ASK: 'Do you want to submit this request? (Yes/No)'. Then call submit_leave_request again with user_confirmed='yes' only if user confirms."
+            }
+
+            if normalized_type != "unpaid" and current_balance < requested_days:
+                preview["error"] = f"Insufficient balance! You have {current_balance} days but need {requested_days}."
+
+            return str(preview)
+
+    # User confirmed - actually submit
     with get_db_session() as db:
         service = HRService(db)
         try:
@@ -325,6 +452,15 @@ def create_excuse(
         Success confirmation with excuse ID.
     """
     # ============================================
+    # NORMALIZE excuse_type (handle LLM variations)
+    # ============================================
+    excuse_type_lower = excuse_type.lower().strip().replace(" ", "_")
+    if "late" in excuse_type_lower or "arrival" in excuse_type_lower or "تأخر" in excuse_type_lower:
+        excuse_type = "late_arrival"
+    elif "early" in excuse_type_lower or "departure" in excuse_type_lower or "مغادرة" in excuse_type_lower:
+        excuse_type = "early_departure"
+
+    # ============================================
     # VALIDATION 1: TIME IS MANDATORY - CHECK FIRST!
     # ============================================
     if excuse_type == "late_arrival" and not start_time:
@@ -342,6 +478,14 @@ def create_excuse(
     # ============================================
     # VALIDATION 3: BLOCK GENERIC/HALLUCINATED REASONS
     # ============================================
+    # Phrases that indicate the user's original message is being echoed back (not a real reason)
+    echo_patterns = [
+        "i was late", "was late today", "late today", "came late", "arrived late",
+        "i am late", "im late", "i'm late",
+        "تأخرت", "كنت متأخر", "جيت متأخر", "وصلت متأخر"
+    ]
+
+    # Generic reasons that need more detail
     generic_reasons = [
         "late", "late arrival", "delayed", "coming late", "traffic", "unspecified",
         "reason", "excuse", "personal", "personal reason", "personal reasons",
@@ -349,17 +493,22 @@ def create_excuse(
         # Arabic generic reasons
         "تأخر", "تأخير", "زحمة", "بدون سبب", "سبب", "متاخر", "شخصي", "ظروف",
         "نسيت", "forgot", "forgot to submit", "نسيت اقدم", "نسيت اقدم طلب",
-        "i forgot", "i was late", "كان متأخر", "تأخرت", "مريض", "تعبان"
+        "i forgot", "كان متأخر", "مريض", "تعبان"
     ]
 
     reason_lower = reason.lower().strip()
 
+    # Check if reason is just echoing the user's statement (not an actual reason)
+    if any(pattern in reason_lower for pattern in echo_patterns):
+        return """{"error": "not_a_reason", "message_ar": "هذا ليس سبباً. اسأل المستخدم: ما سبب تأخرك؟ (مثال: ازدحام مروري على طريق الملك فهد، موعد طبي صباحي، عطل في السيارة)", "message": "That's not a reason - it's just stating you were late. Ask the user: What was the reason for being late? (e.g., traffic jam on King Fahd Road, morning medical appointment, car breakdown)"}"""
+
+    # Check for exact match with generic reasons
     if reason_lower in generic_reasons:
         return """{"error": "generic_reason", "message_ar": "السبب المقدم غير كافٍ. اسأل المستخدم: ما هو السبب المحدد؟ (مثال: زحمة مرورية على الطريق السريع، موعد طبي، ظرف عائلي طارئ)", "message": "The provided reason is too generic. Ask the user: What was the specific reason? (e.g., traffic jam on highway, medical appointment, family emergency)"}"""
 
-    # Block if reason is too short (less than 8 characters) or just one/two words
-    if len(reason.strip()) < 8 or len(reason.split()) < 2:
-        return """{"error": "reason_too_short", "message_ar": "يرجى طلب سبب أكثر تفصيلاً من المستخدم.", "message": "Please ask the user for a more detailed reason."}"""
+    # Block if reason is too short (less than 10 characters) or just one/two words
+    if len(reason.strip()) < 10 or len(reason.split()) < 3:
+        return """{"error": "reason_too_short", "message_ar": "يرجى طلب سبب أكثر تفصيلاً من المستخدم. (مثال: كان هناك حادث على الطريق السريع)", "message": "Please ask the user for a more detailed reason. (e.g., there was an accident on the highway)"}"""
 
     # ============================================
     # VALIDATION 4: CHECK FOR SUSPICIOUS TIMES
@@ -464,13 +613,14 @@ def get_hr_tools() -> list:
         FunctionTool.from_defaults(fn=get_leave_balance),
         FunctionTool.from_defaults(fn=get_team_members),
         FunctionTool.from_defaults(fn=get_team_calendar),
-        FunctionTool.from_defaults(fn=get_payslip),
+        FunctionTool.from_defaults(fn=get_payslip),          # For specific month
+        FunctionTool.from_defaults(fn=get_latest_payslip),   # For "latest" only
         FunctionTool.from_defaults(fn=get_ticket_status),
         FunctionTool.from_defaults(fn=check_duplicate_excuse),
         # Utility tools
         FunctionTool.from_defaults(fn=handle_cancel_request),
         # Write tools
-        FunctionTool.from_defaults(fn=submit_leave_request),
+        FunctionTool.from_defaults(fn=submit_leave_request),  # Now handles preview + submit
         FunctionTool.from_defaults(fn=create_excuse),
         FunctionTool.from_defaults(fn=create_support_ticket),
     ]

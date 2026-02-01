@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
+import io
 
 from app.db.models import (
     Employee, LeaveBalance, LeaveRequest, Payslip, Excuse, Ticket,
@@ -231,10 +232,124 @@ class HRService:
                 "total": total_deductions,
                 "total_ar": "إجمالي الاستقطاعات"
             },
-            "download_available": False,
-            "download_note": "📥 Download option coming soon! / خيار التحميل قريباً!"
+            "download_available": True,
+            "download_url": f"/payslip/download/{employee_id}/{payslip.year}/{payslip.month}"
         }
-    
+
+    def generate_payslip_pdf(
+        self,
+        employee_id: str,
+        month: Optional[int] = None,
+        year: Optional[int] = None
+    ) -> Optional[bytes]:
+        """Generate a PDF payslip for download."""
+        from fpdf import FPDF
+
+        # Get payslip data
+        payslip_data = self.get_payslip(employee_id, month, year)
+        if "error" in payslip_data:
+            return None
+
+        # Get employee info
+        employee = self.db.query(Employee).filter(Employee.id == employee_id).first()
+        if not employee:
+            return None
+
+        # Create PDF
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Title
+        pdf.set_font("Helvetica", "B", 20)
+        pdf.cell(0, 15, "PAYSLIP", ln=True, align="C")
+        pdf.ln(5)
+
+        # Company name
+        pdf.set_font("Helvetica", "", 12)
+        pdf.cell(0, 8, "Solvait Company", ln=True, align="C")
+        pdf.ln(10)
+
+        # Period
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, f"Period: {payslip_data.get('period_display', '')}", ln=True, align="C")
+        pdf.ln(10)
+
+        # Employee info
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, f"Employee ID: {employee_id}", ln=True)
+        pdf.cell(0, 8, f"Name: {employee.name}", ln=True)
+        pdf.cell(0, 8, f"Department: {employee.department}", ln=True)
+        pdf.ln(10)
+
+        # Earnings section
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_fill_color(230, 230, 230)
+        pdf.cell(0, 8, "EARNINGS", ln=True, fill=True)
+        pdf.set_font("Helvetica", "", 11)
+
+        basic = payslip_data.get("basic_salary", 0)
+        allowances = payslip_data.get("allowances", {})
+
+        pdf.cell(120, 7, "Basic Salary", border=0)
+        pdf.cell(0, 7, f"SAR {basic:,.2f}", ln=True, align="R")
+
+        pdf.cell(120, 7, "Housing Allowance", border=0)
+        pdf.cell(0, 7, f"SAR {allowances.get('housing_allowance', 0):,.2f}", ln=True, align="R")
+
+        pdf.cell(120, 7, "Transport Allowance", border=0)
+        pdf.cell(0, 7, f"SAR {allowances.get('transport_allowance', 0):,.2f}", ln=True, align="R")
+
+        pdf.cell(120, 7, "Phone Allowance", border=0)
+        pdf.cell(0, 7, f"SAR {allowances.get('phone_allowance', 0):,.2f}", ln=True, align="R")
+
+        pdf.cell(120, 7, "Meal Allowance", border=0)
+        pdf.cell(0, 7, f"SAR {allowances.get('meal_allowance', 0):,.2f}", ln=True, align="R")
+
+        pdf.cell(120, 7, "Other Allowances", border=0)
+        pdf.cell(0, 7, f"SAR {allowances.get('other_allowances', 0):,.2f}", ln=True, align="R")
+
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(120, 7, "Total Earnings", border="T")
+        gross = basic + allowances.get("total", 0)
+        pdf.cell(0, 7, f"SAR {gross:,.2f}", ln=True, align="R", border="T")
+        pdf.ln(5)
+
+        # Deductions section
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "DEDUCTIONS", ln=True, fill=True)
+        pdf.set_font("Helvetica", "", 11)
+
+        deductions = payslip_data.get("deductions", {})
+
+        pdf.cell(120, 7, "GOSI (Social Insurance)", border=0)
+        pdf.cell(0, 7, f"SAR {deductions.get('gosi_deduction', 0):,.2f}", ln=True, align="R")
+
+        pdf.cell(120, 7, "Tax", border=0)
+        pdf.cell(0, 7, f"SAR {deductions.get('tax_deduction', 0):,.2f}", ln=True, align="R")
+
+        pdf.cell(120, 7, "Loan Repayment", border=0)
+        pdf.cell(0, 7, f"SAR {deductions.get('loan_deduction', 0):,.2f}", ln=True, align="R")
+
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(120, 7, "Total Deductions", border="T")
+        pdf.cell(0, 7, f"SAR {deductions.get('total', 0):,.2f}", ln=True, align="R", border="T")
+        pdf.ln(10)
+
+        # Net Salary
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_fill_color(200, 230, 200)
+        pdf.cell(120, 10, "NET SALARY", fill=True)
+        pdf.cell(0, 10, f"SAR {payslip_data.get('net_salary', 0):,.2f}", ln=True, align="R", fill=True)
+        pdf.ln(15)
+
+        # Footer
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.cell(0, 6, "This is a computer-generated document.", ln=True, align="C")
+        pdf.cell(0, 6, f"Generated on: {date.today().strftime('%Y-%m-%d')}", ln=True, align="C")
+
+        # Return PDF bytes
+        return pdf.output()
+
     def get_ticket_status(self, ticket_id: int) -> Dict[str, Any]:
         """Get status of a support ticket."""
         ticket = self.db.query(Ticket).filter(Ticket.id == ticket_id).first()
@@ -273,11 +388,22 @@ class HRService:
         calling again with confirm_conflicts=True.
         """
 
-        # 1. Validate leave type
+        # 1. Validate leave type - map synonyms
+        leave_type_mapping = {
+            "annual": "annual",
+            "sick": "sick",
+            "unpaid": "unpaid",
+            "medical": "sick",  # Map medical to sick
+            "مرضية": "sick",    # Arabic medical
+            "سنوية": "annual",  # Arabic annual
+            "بدون راتب": "unpaid",  # Arabic unpaid
+        }
+        normalized_type = leave_type_mapping.get(leave_type.lower(), leave_type.lower())
+
         try:
-            lt = LeaveType(leave_type.lower())
+            lt = LeaveType(normalized_type)
         except ValueError:
-            return {"error": f"Invalid leave type: {leave_type}. Use: annual, sick, or unpaid"}
+            return {"error": f"Invalid leave type: {leave_type}. Use: annual, sick/medical, or unpaid"}
 
         # 1.5 Validate dates
         if end_date < start_date:
@@ -340,12 +466,17 @@ class HRService:
         self.db.flush()  # Get the ID
 
         # 6. Deduct from balance (for non-unpaid)
+        remaining_balance = None
+        original_balance = None
         if lt != LeaveType.UNPAID and balance:
+            original_balance = balance.balance_days
             balance.balance_days -= requested_days
+            remaining_balance = balance.balance_days
 
         self.db.commit()
 
-        return {
+        # Build response with balance info
+        result = {
             "success": True,
             "request_id": f"LR-{leave_request.id:04d}",
             "message": f"Leave request submitted successfully for {start_date} to {end_date}",
@@ -356,6 +487,18 @@ class HRService:
                 "status": "pending"
             }
         }
+
+        # Add balance info if applicable
+        if remaining_balance is not None:
+            result["balance_info"] = {
+                "original": original_balance,
+                "used": requested_days,
+                "remaining": remaining_balance
+            }
+            result["message"] += f". Your {leave_type} leave balance is now {remaining_balance} days."
+            result["message_ar"] += f". رصيد إجازتك {self._get_leave_type_arabic(lt)} الآن {remaining_balance} يوم."
+
+        return result
     
     def check_duplicate_excuse(
         self,
@@ -417,41 +560,69 @@ class HRService:
         except ValueError:
             return {"error": f"Invalid excuse type: {excuse_type}. Use: late_arrival or early_departure"}
         
-        # Parse times with error handling - supports both "8:17" and "08:17" formats
+        # Parse times with error handling - supports various formats
         from datetime import datetime
+        import re
         st = None
         et_time = None
-        
+
         def parse_time(time_str: str) -> tuple:
-            """Parse time string in various formats and return (hour, minute) tuple."""
+            """Parse time string in various formats and return (hour, minute) tuple.
+
+            Supported formats:
+            - "8:17", "08:17" (24-hour)
+            - "8.17", "08.17" (with dot separator)
+            - "8:30 AM", "8:30 am", "8:30AM" (12-hour with AM/PM)
+            - "3:00 PM", "3:00 pm", "3:00PM" (12-hour with AM/PM)
+            - "8am", "3pm" (hour only with AM/PM)
+            """
             if not time_str:
                 return None
-            
-            # Remove any whitespace
+
+            # Remove any extra whitespace and convert to lowercase for easier parsing
             time_str = time_str.strip()
-            
-            # Handle formats like "8:17", "08:17", "8.17", "08.17"
-            if ':' in time_str:
-                parts = time_str.split(':')
-            elif '.' in time_str:
-                parts = time_str.split('.')
+            time_lower = time_str.lower()
+
+            # Check for AM/PM format
+            is_pm = 'pm' in time_lower or 'p.m' in time_lower
+            is_am = 'am' in time_lower or 'a.m' in time_lower
+
+            # Remove AM/PM suffixes for parsing
+            clean_time = re.sub(r'\s*(am|pm|a\.m\.?|p\.m\.?)\s*', '', time_lower, flags=re.IGNORECASE).strip()
+
+            # Handle hour-only format like "8am" or "3pm"
+            if clean_time.isdigit():
+                hour = int(clean_time)
+                minute = 0
             else:
-                return None
-            
-            if len(parts) != 2:
-                return None
-            
-            try:
-                hour = int(parts[0])
-                minute = int(parts[1])
-                
-                # Validate ranges
-                if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+                # Handle formats like "8:17", "08:17", "8.17", "08.17"
+                if ':' in clean_time:
+                    parts = clean_time.split(':')
+                elif '.' in clean_time:
+                    parts = clean_time.split('.')
+                else:
                     return None
-                
-                return (hour, minute)
-            except ValueError:
+
+                if len(parts) != 2:
+                    return None
+
+                try:
+                    hour = int(parts[0])
+                    minute = int(parts[1])
+                except ValueError:
+                    return None
+
+            # Convert 12-hour to 24-hour format
+            if is_pm and hour < 12:
+                hour += 12
+            elif is_am and hour == 12:
+                hour = 0
+
+            # Validate ranges
+            if not (0 <= hour <= 23) or not (0 <= minute <= 59):
                 return None
+
+            return (hour, minute)
         
         if start_time:
             parsed = parse_time(start_time)

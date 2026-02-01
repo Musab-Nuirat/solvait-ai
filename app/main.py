@@ -295,6 +295,30 @@ async def get_database():
         }
 
 
+@app.get("/payslip/download/{employee_id}/{year}/{month}")
+async def download_payslip(employee_id: str, year: int, month: int):
+    """Download payslip as PDF."""
+    from fastapi.responses import StreamingResponse
+    from app.db.database import get_db_session
+    from app.mcp.hr_service import HRService
+    import io
+
+    with get_db_session() as db:
+        service = HRService(db)
+        pdf_bytes = service.generate_payslip_pdf(employee_id, month, year)
+
+        if pdf_bytes is None:
+            raise HTTPException(status_code=404, detail="Payslip not found")
+
+        # Return as PDF download
+        filename = f"payslip_{employee_id}_{year}_{str(month).zfill(2)}.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+
 @app.post("/reset-db")
 async def reset_database():
     """Clear and reseed the database."""
