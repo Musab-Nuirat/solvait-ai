@@ -26,6 +26,9 @@ LLAMA_CLOUD_API_KEY = os.getenv("LLAMA_CLOUD_API_KEY", "")
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR}/hr_database.db")
 
+# API Base URL for payslip downloads and other resources
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
 # Model settings
 EMBEDDING_MODEL = "models/embedding-001"
 LLM_MODEL = "gemini-2.0-flash"

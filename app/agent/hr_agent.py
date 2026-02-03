@@ -9,6 +9,7 @@ from app.agent.custom_llm import GoogleGenaiLLM
 from app.config import GOOGLE_API_KEY, LLM_MODEL, DEBUG_MODE
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.intent_router import get_intent_router, get_tool_interceptor
+from app.agent.pydantic_programs import get_duplicate_detector, get_response_formatter
 from app.mcp.tools import get_hr_tools
 from app.rag.policy_engine import get_policy_engine
 from app.utils.tracer import get_tracer, Tracer
@@ -157,6 +158,30 @@ class HRAgent:
         detected_intent, intent_prompt = intent_router.detect_intent(message, chat_history)
         tracer.log("INTENT", f"Detected intent: {detected_intent}")
 
+        # DUPLICATE DETECTION: Check if this is a repeated request
+        if chat_history and detected_intent not in ["cancel", "greeting", "general"]:
+            duplicate_detector = get_duplicate_detector()
+            dup_result = duplicate_detector.check_duplicate(
+                message, detected_intent, chat_history, lookback=5
+            )
+            if dup_result.is_duplicate:
+                tracer.log("DUPLICATE", f"Duplicate message detected (fingerprint: {dup_result.message_fingerprint})")
+                is_arabic = any(ord(c) > 127 for c in message)
+                if is_arabic:
+                    response = "أرى أنك ذكرت هذا سابقاً. هل تريد المتابعة في الطلب السابق أم البدء من جديد؟"
+                else:
+                    response = "I see you mentioned this earlier. Would you like to continue with the previous request or start a new one?"
+                output = {"response": response}
+                if return_traces:
+                    output["traces"] = tracer.get_traces()
+                return output
+
+        # INTENT ISOLATION: Check if intent changed and add context isolation
+        intent_change = intent_router.detect_intent_change(detected_intent, chat_history)
+        if intent_change.get("changed"):
+            tracer.log("INTENT_CHANGE", f"Intent changed from {intent_change['previous_intent']} to {detected_intent}")
+            # The intent prompt already has isolation instructions added by detect_intent()
+
         # PRE-PROCESSING: Payslip without month - return immediately with question
         if detected_intent == "payslip":
             payslip_keywords = ["payslip", "salary", "راتب", "قسيمة", "كشف راتب", "pay slip", "كشف الراتب", "رواتب", "معاش"]
@@ -214,12 +239,21 @@ class HRAgent:
             
             detected_lang = detect_language(message)
             today_str = date.today().strftime("%Y-%m-%d")
-            context_prefix = f"""[SYSTEM CONTEXT]
+            context_prefix = f"""[SYSTEM CONTEXT - CRITICAL RULES]
 - Current Date: {today_str} (Use this for 'today')
 - Current Employee: {self.employee_id}
-- Detected Language of CURRENT message: {detected_lang}
-- CRITICAL: You MUST reply in {detected_lang}. Ignore the language of previous messages in chat history.
-- Rule: Do NOT ask for the date.
+- Detected Language of CURRENT message: **{detected_lang}**
+
+## LANGUAGE ENFORCEMENT (MANDATORY)
+- You MUST reply ONLY in {detected_lang}.
+- DO NOT mix languages in your response.
+- DO NOT be influenced by previous messages' language.
+- If user wrote in Arabic, respond ENTIRELY in Arabic.
+- If user wrote in English, respond ENTIRELY in English.
+
+## OTHER RULES
+- Do NOT ask for the date - use {today_str}.
+- Do NOT ask for employee ID - use {self.employee_id}.
 [END SYSTEM CONTEXT]
 
 """

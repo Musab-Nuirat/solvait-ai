@@ -20,7 +20,7 @@ import os
 class GoogleGenaiLLM(CustomLLM):
     context_window: int = 32000
     num_output: int = 2048
-    model_name: str = "gemini-2.0-flash-exp"
+    model_name: str = "gemini-2.0-flash"
     api_key: str = None
     client: Any = None
 

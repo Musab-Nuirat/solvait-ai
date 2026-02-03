@@ -38,7 +38,8 @@ def get_leave_balance(employee_id: str, leave_type: Optional[str] = None) -> str
                    If not specified, returns all leave types.
 
     Returns:
-        EXACT text to display to user - DO NOT REPHRASE OR SUMMARIZE!
+        Structured card format with emojis and mandatory follow-up question.
+        DO NOT REPHRASE OR SUMMARIZE - display exactly as returned!
     """
     with get_db_session() as db:
         service = HRService(db)
@@ -47,21 +48,34 @@ def get_leave_balance(employee_id: str, leave_type: Optional[str] = None) -> str
         if isinstance(result, dict) and "balances" in result:
             balances = result["balances"]
 
-            # Build the EXACT response text
+            # Build structured card format with emojis
             lines = []
-            lines.append("**Your Leave Balance:**")
+            lines.append("📊 **Your Leave Balance:**")
             lines.append("")
+
+            # Emoji and display mapping
+            type_info = {
+                "annual": {"emoji": "🏖️", "display": "Annual Leave", "ar": "إجازة سنوية"},
+                "sick": {"emoji": "🏥", "display": "Sick Leave", "ar": "إجازة مرضية"},
+                "unpaid": {"emoji": "📝", "display": "Unpaid Leave", "ar": "إجازة بدون راتب"}
+            }
+
             for b in balances:
-                leave_name = b["type"].title()
+                leave_t = b["type"]
                 days = b["remaining_days"]
-                if b["type"] == "annual":
-                    lines.append(f"- Annual Leave: {days} days remaining")
-                elif b["type"] == "sick":
-                    lines.append(f"- Sick Leave: {days} days remaining")
-                elif b["type"] == "unpaid":
-                    lines.append(f"- Unpaid Leave: {days} days remaining")
+                info = type_info.get(leave_t, {"emoji": "📋", "display": leave_t.title(), "ar": leave_t})
+                lines.append(f"{info['emoji']} {info['display']}: {days} days remaining")
+
             lines.append("")
             lines.append("Would you like me to help you request a new leave now?")
+
+            # Also include structured JSON for programmatic access
+            structured_data = {
+                "success": True,
+                "employee_id": employee_id,
+                "balances": balances,
+                "follow_up": "Would you like me to help you request a new leave now?"
+            }
 
             return "\n".join(lines)
 
@@ -348,6 +362,23 @@ def submit_leave_request(
             # Display leave type - show as "sick (medical)" if they asked for medical
             display_type = f"sick ({leave_type})" if leave_type.lower() == "medical" else leave_type
 
+            # Build card-formatted preview
+            lines = []
+            lines.append("📋 **Leave Request Summary:**")
+            lines.append("")
+            lines.append(f"Type: {display_type.title()}")
+            lines.append(f"From: {start_date}")
+            lines.append(f"To: {end_date}")
+            lines.append(f"Duration: {requested_days} days")
+            lines.append(f"Balance: {current_balance} → {remaining_after} days")
+            lines.append("")
+
+            if normalized_type != "unpaid" and current_balance < requested_days:
+                lines.append(f"❌ **Insufficient balance!** You have {current_balance} days but need {requested_days}.")
+                lines.append("")
+
+            lines.append("Do you want to submit this request? (Yes/No)")
+
             preview = {
                 "preview": True,
                 "not_submitted_yet": True,
@@ -358,14 +389,15 @@ def submit_leave_request(
                 "days": requested_days,
                 "current_balance": current_balance,
                 "remaining_after": remaining_after,
-                "message": f"PREVIEW - Leave Request Summary: {display_type.title()} leave from {start_date} to {end_date} ({requested_days} days). Current balance: {current_balance} days. After approval: {remaining_after} days.",
-                "action_required": "SHOW THIS TO USER AND ASK: 'Do you want to submit this request? (Yes/No)'. Then call submit_leave_request again with user_confirmed='yes' only if user confirms."
+                "formatted_message": "\n".join(lines),
+                "action_required": "Display the formatted_message to user and wait for yes/no confirmation."
             }
 
             if normalized_type != "unpaid" and current_balance < requested_days:
                 preview["error"] = f"Insufficient balance! You have {current_balance} days but need {requested_days}."
 
-            return str(preview)
+            # Return the formatted card directly for display
+            return "\n".join(lines)
 
     # User confirmed - actually submit
     with get_db_session() as db:
@@ -387,6 +419,27 @@ def submit_leave_request(
         result = service.submit_leave_request(
             employee_id, leave_type, start, end, reason, confirm_conflicts
         )
+
+        # Format response with clear balance info display
+        if isinstance(result, dict) and result.get("success"):
+            balance_info = result.get("balance_info", {})
+            request_id = result.get("request_id", "")
+            msg = result.get("message", "")
+
+            # Build formatted response with balance display
+            lines = []
+            lines.append(f"✅ {msg}")
+            lines.append("")
+
+            if balance_info:
+                original = balance_info.get("original", 0)
+                used = balance_info.get("used", 0)
+                remaining = balance_info.get("remaining", 0)
+                lines.append(f"📊 **Balance Update:**")
+                lines.append(f"Your {normalized_type} leave: {original} → {remaining} days (used {used} days)")
+
+            return "\n".join(lines)
+
         return str(result)
 
 

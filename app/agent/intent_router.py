@@ -59,23 +59,29 @@ RULES - FOLLOW EXACTLY:
 RULES - FOLLOW EXACTLY:
 1. Determine type: late_arrival OR early_departure
 2. COLLECT ALL REQUIRED INFO BEFORE PROCEEDING:
-   - For late_arrival: ASK "What time did you arrive?" (e.g., 8:30 AM)
-   - For early_departure: ASK "What time did you leave?" (e.g., 3:00 PM)
+   - For late_arrival:
+     * start_time is MANDATORY - ASK "What time did you arrive?" (e.g., 8:30 AM)
+   - For early_departure:
+     * end_time is MANDATORY - ASK "What time did you leave?" (e.g., 3:00 PM)
    - MUST have SPECIFIC reason - ASK "What was the specific reason?" (generic like "traffic" alone is NOT accepted, need details like "traffic jam on highway due to accident")
-3. DO NOT call create_excuse until you have ALL: type, time, AND detailed reason
+3. DO NOT call create_excuse until you have ALL of these:
+   - type (late_arrival or early_departure)
+   - time (start_time for late_arrival, end_time for early_departure)
+   - detailed reason (at least 10 characters, specific details)
 4. TIME FORMAT: Accept AM/PM (e.g., "8:30 AM", "3pm") and 24-hour (e.g., "08:30", "15:00")
-5. MANDATORY CONFIRMATION: After collecting all info, show summary:
+5. MANDATORY CONFIRMATION: After collecting all info, show summary card:
    ```
-   Excuse Request Summary:
-   - Date: [date]
-   - Type: Late Arrival / Early Departure
-   - Time: [time]
-   - Reason: [reason]
+   📋 **Excuse Request Summary:**
+   Date: [date]
+   Type: Late Arrival / Early Departure
+   Time: [arrival/departure time]
+   Reason: [detailed reason]
 
    Do you want to submit this excuse? (Yes/No)
    ```
 6. WAIT for explicit "yes" or "نعم" before calling create_excuse
-7. If user cancels, acknowledge cancellation""",
+7. If user cancels, acknowledge cancellation
+8. CRITICAL: For early_departure, the end_time parameter is REQUIRED. Do NOT submit without it!""",
 
         "policy": """You are answering an HR policy question.
 RULES:
@@ -209,17 +215,51 @@ RULES:
         if not chat_history:
             return None
 
-        # Look at recent messages for clues
-        for msg in reversed(chat_history[-4:]):
+        # Look at recent user messages for intent clues
+        for msg in reversed(chat_history[-6:]):
+            if msg.get("role") != "user":
+                continue
             content = msg.get("content", "").lower()
-            if "leave" in content or "اجازة" in content:
-                return "leave_request"
-            if "excuse" in content or "استئذان" in content or "تأخر" in content:
-                return "excuse"
-            if "payslip" in content or "راتب" in content:
-                return "payslip"
+
+            # Check each intent's keywords
+            for intent, keywords in self.INTENT_KEYWORDS.items():
+                if any(kw in content for kw in keywords):
+                    return intent
 
         return None
+
+    def detect_intent_change(self, current_intent: str, chat_history: list) -> dict:
+        """
+        Detect if intent has changed from previous conversation.
+
+        Returns:
+            Dict with 'changed', 'previous_intent', 'isolation_message'
+        """
+        if not chat_history:
+            return {"changed": False, "previous_intent": None}
+
+        previous_intent = self._get_last_intent(chat_history)
+
+        if previous_intent and previous_intent != current_intent:
+            # Intent changed - need to clear context
+            intent_names = {
+                "leave_balance": ("leave balance", "رصيد الإجازات"),
+                "leave_request": ("leave request", "طلب إجازة"),
+                "payslip": ("payslip", "قسيمة الراتب"),
+                "excuse": ("excuse request", "طلب استئذان"),
+                "policy": ("policy question", "سؤال عن السياسات"),
+            }
+
+            current_name = intent_names.get(current_intent, (current_intent, current_intent))
+
+            return {
+                "changed": True,
+                "previous_intent": previous_intent,
+                "isolation_message_en": f"I see you're now asking about {current_name[0]}. Let me help you with that.",
+                "isolation_message_ar": f"أرى أنك تسأل الآن عن {current_name[1]}. دعني أساعدك في ذلك."
+            }
+
+        return {"changed": False, "previous_intent": previous_intent}
 
     def get_combined_prompt(self, base_prompt: str, intent: str) -> str:
         """

@@ -9,6 +9,7 @@ from app.db.models import (
     Employee, LeaveBalance, LeaveRequest, Payslip, Excuse, Ticket,
     LeaveType, RequestStatus, ExcuseType
 )
+from app.config import API_BASE_URL
 
 
 class HRService:
@@ -233,7 +234,7 @@ class HRService:
                 "total_ar": "إجمالي الاستقطاعات"
             },
             "download_available": True,
-            "download_url": f"/payslip/download/{employee_id}/{payslip.year}/{payslip.month}"
+            "download_url": f"{API_BASE_URL}/payslip/download/{employee_id}/{payslip.year}/{payslip.month}"
         }
 
     def generate_payslip_pdf(
@@ -453,7 +454,49 @@ class HRService:
                         "action_required": "Ask user to confirm if they want to proceed despite the conflict. If yes, call submit_leave_request again with confirm_conflicts=True"
                     }
 
-        # 5. Create leave request (no conflicts or user confirmed)
+        # 5. Create leave request with strict balance validation (no conflicts or user confirmed)
+        # Re-fetch and lock the balance to prevent race conditions
+        remaining_balance = None
+        original_balance = None
+
+        if lt != LeaveType.UNPAID:
+            # Re-query balance with lock to ensure atomicity
+            balance = self.db.query(LeaveBalance).filter(
+                LeaveBalance.employee_id == employee_id,
+                LeaveBalance.leave_type == lt
+            ).with_for_update().first()
+
+            if not balance:
+                return {
+                    "error": "balance_not_found",
+                    "message": f"No {leave_type} leave balance found for employee {employee_id}.",
+                    "message_ar": f"لم يتم العثور على رصيد إجازة {self._get_leave_type_arabic(lt)} للموظف."
+                }
+
+            # STRICT VALIDATION: Re-check balance before deducting
+            if balance.balance_days < requested_days:
+                return {
+                    "error": "insufficient_balance",
+                    "message": f"Insufficient balance. You have {balance.balance_days} days but requested {requested_days}.",
+                    "message_ar": f"رصيد غير كافٍ. لديك {balance.balance_days} يوم ولكنك طلبت {requested_days} يوم."
+                }
+
+            original_balance = balance.balance_days
+
+            # Deduct immediately while lock is held
+            balance.balance_days -= requested_days
+            remaining_balance = balance.balance_days
+
+            # CRITICAL: Prevent negative balances (should never happen but extra safety)
+            if remaining_balance < 0:
+                self.db.rollback()
+                return {
+                    "error": "balance_underflow",
+                    "message": "Cannot process request - would result in negative balance.",
+                    "message_ar": "لا يمكن معالجة الطلب - سيؤدي إلى رصيد سالب."
+                }
+
+        # Create the leave request
         leave_request = LeaveRequest(
             employee_id=employee_id,
             leave_type=lt,
@@ -464,14 +507,6 @@ class HRService:
         )
         self.db.add(leave_request)
         self.db.flush()  # Get the ID
-
-        # 6. Deduct from balance (for non-unpaid)
-        remaining_balance = None
-        original_balance = None
-        if lt != LeaveType.UNPAID and balance:
-            original_balance = balance.balance_days
-            balance.balance_days -= requested_days
-            remaining_balance = balance.balance_days
 
         self.db.commit()
 
